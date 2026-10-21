@@ -417,22 +417,33 @@
             const px = pointer.x * width;
             const py = pointer.y * height;
 
-            // fareye en yakın cam noktası
-            let best = null;
-            let bestDist = Infinity;
-            const edges = [[L, T], [T, R], [R, L]];
+            // imlecin prizmanin icinde olup olmadigi
+            const sign = (ax, ay, bx, by, cx, cy) => (ax - cx) * (by - cy) - (bx - cx) * (ay - cy);
+            const d1 = sign(px, py, L.x, L.y, T.x, T.y);
+            const d2 = sign(px, py, T.x, T.y, R.x, R.y);
+            const d3 = sign(px, py, R.x, R.y, L.x, L.y);
+            const inside = (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
 
-            for (const [a, b] of edges) {
-                const ex = b.x - a.x;
-                const ey = b.y - a.y;
-                const len2 = ex * ex + ey * ey || 1;
-                const t = clamp(((px - a.x) * ex + (py - a.y) * ey) / len2, 0, 1);
-                const qx = a.x + ex * t;
-                const qy = a.y + ey * t;
-                const d = Math.hypot(px - qx, py - qy);
-                if (d < bestDist) {
-                    bestDist = d;
-                    best = { x: qx, y: qy, t };
+            // en yakin nokta: imlec camin icindeyse imlecin kendisi
+            let best = { x: px, y: py };
+            let bestDist = 0;
+
+            if (!inside) {
+                bestDist = Infinity;
+                const edges = [[L, T], [T, R], [R, L]];
+
+                for (const [a, b] of edges) {
+                    const ex = b.x - a.x;
+                    const ey = b.y - a.y;
+                    const len2 = ex * ex + ey * ey || 1;
+                    const t = clamp(((px - a.x) * ex + (py - a.y) * ey) / len2, 0, 1);
+                    const qx = a.x + ex * t;
+                    const qy = a.y + ey * t;
+                    const dist = Math.hypot(px - qx, py - qy);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        best = { x: qx, y: qy };
+                    }
                 }
             }
 
@@ -440,9 +451,9 @@
             const strength = near * 1.0;
 
             if (strength > 0.01) {
-                // cam üstündeki yumuşak spekülar parlama (çizgi yok, sadece ışık)
-                const gx = mix(best.x, prismCx, 0.3);
-                const gy = mix(best.y, prismCy, 0.3);
+                // parlama imlecin tam altinda durur
+                const gx = inside ? px : mix(best.x, prismCx, 0.3);
+                const gy = inside ? py : mix(best.y, prismCy, 0.3);
                 softBlob(gx, gy, prismH * 0.75, [0.84, 0.89, 1], 0.34 * strength);
                 softBlob(gx, gy, prismH * 0.2, [1, 1, 1], 0.42 * strength);
 
@@ -461,19 +472,47 @@
 
     /* ---------- girdi ---------- */
 
-    window.addEventListener("pointermove", (event) => {
-        pointer.targetX = event.clientX / Math.max(1, window.innerWidth);
-        pointer.targetY = event.clientY / Math.max(1, window.innerHeight);
+    function setPointerFromEvent(event) {
+        const width = Math.max(1, window.innerWidth);
+        const height = Math.max(1, window.innerHeight);
+
+        pointer.targetX = event.clientX / width;
+        pointer.targetY = event.clientY / height;
         pointer.active = true;
+    }
+
+    // pointermove bazi tarayici/cihazlarda gelmeyebiliyor; mousemove yedegi
+    window.addEventListener("pointermove", setPointerFromEvent, { passive: true });
+    window.addEventListener("mousemove", setPointerFromEvent, { passive: true });
+    window.addEventListener("pointerdown", setPointerFromEvent, { passive: true });
+
+    // dokunmatik: dokunma aninda da isik tepki versin
+    window.addEventListener("touchstart", (event) => {
+        const touch = event.touches && event.touches[0];
+        if (touch) setPointerFromEvent(touch);
     }, { passive: true });
 
-    window.addEventListener("pointerleave", () => {
+    // imlec pencereyi terk etince otomatik moda don
+    document.addEventListener("mouseleave", () => {
+        pointer.active = false;
+    }, { passive: true });
+
+    window.addEventListener("blur", () => {
         pointer.active = false;
     }, { passive: true });
 
     // dokunmatik / hareketsiz durumda otomatik pointer (vgpu davranışı)
     function autoPointer(time) {
-        if (pointer.active && !reduceMotion) return;
+        // gercek bir fare/hareket varsa otomatik yol devre disi kalir
+        // (eski kodda reduced motion acikken imlec surekli eziliyordu)
+        if (pointer.active) return;
+
+        if (reduceMotion) {
+            pointer.targetX = 0.5;
+            pointer.targetY = 0.45;
+            return;
+        }
+
         const phase = (time / 18) * Math.PI * 2;
         pointer.targetX = 0.5 + Math.cos(phase) * 0.34;
         pointer.targetY = 0.5 + Math.sin(phase) * 0.34;
