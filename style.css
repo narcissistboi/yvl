@@ -94,7 +94,9 @@ body {
     align-items: flex-start;
     width: min(560px, 48vw);
     text-align: left;
-    animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    /* "backwards" kaldirildi: sekme arka plandayken animasyon baslamazsa
+       yazi opacity 0'da kalip gorunmez oluyordu */
+    animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .name {

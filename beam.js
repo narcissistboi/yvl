@@ -242,12 +242,19 @@
         /* ---------- optik çözüm ---------- */
 
         // vgpu mantığı: yükseklik kaynağı (lamba) oynatır, genişlik çarpma noktasını seçer
-        const aimT = 0.16 + 0.68 * pointer.x;
+        // ölçüler prizmanın kendi kutusuna göre normalize edilir; böylece ışık
+        // ekranın nereye gelirse gelsin prizmanın üstünden geçer
+        const relX = clamp((pointer.x * width - L.x) / Math.max(1, prismW), 0, 1);
+        const relY = clamp((pointer.y * height - prismTop) / Math.max(1, prismH), 0, 1);
+
+        const aimT = 0.22 + 0.56 * relX;
         const aim = { x: mix(L.x, T.x, aimT), y: mix(L.y, T.y, aimT) };
 
+        // kaynak dikeyde sınırlı: giris acisi cok dik olmasin
+        const sourceTargetY = mix(prismBottom + prismH * 0.1, prismTop - prismH * 0.1, 1 - relY);
         const source = {
-            x: L.x - prismW * 0.78,
-            y: mix(prismBottom + prismH * 0.18, prismTop - prismH * 0.18, 1 - pointer.y)
+            x: L.x - prismW * 0.62,
+            y: clamp(sourceTargetY, aim.y - prismH * 0.2, aim.y + prismH * 0.2)
         };
 
         const d0x = aim.x - source.x;
@@ -291,7 +298,9 @@
             || { x: inside.x, y: inside.y };
         const baseAngle = Math.atan2(baseOut.y, baseOut.x);
 
-        const fanLength = clamp(prismW * 0.78, 190, 430);
+        // yelpaze ekrandan tasmasin
+        const room = Math.max(140, width - exit.x - 16);
+        const fanLength = clamp(Math.min(prismW * 0.8, room), 150, 430);
 
         /* ---------- çizim katmanları ---------- */
 
@@ -427,34 +436,54 @@
                 }
             }
 
-            const near = 1 - smoothstep(prismH * 0.15, prismH * 1.25, bestDist);
-            const strength = near * 0.9;
+            const near = 1 - smoothstep(prismH * 0.2, prismH * 1.7, bestDist);
+            const strength = near * 1.0;
 
             if (strength > 0.01) {
                 // cam üstündeki yumuşak spekülar parlama
-                const gx = mix(best.x, prismCx, 0.35);
-                const gy = mix(best.y, prismCy, 0.35);
-                softBlob(gx, gy, prismH * 0.6, [0.84, 0.89, 1], 0.26 * strength);
-                softBlob(gx, gy, prismH * 0.16, [1, 1, 1], 0.3 * strength);
+                const gx = mix(best.x, prismCx, 0.3);
+                const gy = mix(best.y, prismCy, 0.3);
+                softBlob(gx, gy, prismH * 0.75, [0.84, 0.89, 1], 0.34 * strength);
+                softBlob(gx, gy, prismH * 0.2, [1, 1, 1], 0.42 * strength);
 
-                // stüdyo ışığı çizgisi gibi uzun parlama
+                // stüdyo ışığı çizgisi gibi uzun, yumuşak parlama
                 ctx.save();
                 ctx.translate(gx, gy);
                 ctx.rotate(-0.42);
-                const streak = ctx.createLinearGradient(-prismW * 0.5, 0, prismW * 0.5, 0);
-                streak.addColorStop(0, "rgba(255,255,255,0)");
-                streak.addColorStop(0.5, `rgba(255,255,255,${0.3 * strength})`);
+                ctx.scale(1, 0.1);
+                const streak = ctx.createRadialGradient(0, 0, 0, 0, 0, prismW * 0.55);
+                streak.addColorStop(0, `rgba(255,255,255,${0.5 * strength})`);
+                streak.addColorStop(0.45, `rgba(225,235,255,${0.16 * strength})`);
                 streak.addColorStop(1, "rgba(255,255,255,0)");
                 ctx.fillStyle = streak;
-                ctx.fillRect(-prismW * 0.5, -prismH * 0.05, prismW, prismH * 0.1);
+                ctx.beginPath();
+                ctx.arc(0, 0, prismW * 0.55, 0, Math.PI * 2);
+                ctx.fill();
                 ctx.restore();
 
                 // cam kenarında kenar parlaması
-                ctx.strokeStyle = `rgba(255,255,255,${0.34 * strength})`;
-                ctx.lineWidth = 1.4;
+                ctx.strokeStyle = `rgba(255,255,255,${0.5 * strength})`;
+                ctx.lineWidth = 1.8;
                 ctx.beginPath();
                 ctx.moveTo(best.x, best.y);
-                ctx.lineTo(mix(best.x, prismCx, 0.18), mix(best.y, prismCy, 0.18));
+                ctx.lineTo(mix(best.x, prismCx, 0.22), mix(best.y, prismCy, 0.22));
+                ctx.stroke();
+
+                // kenarda spektral parıltı (prizmanın kırılma hissi)
+                const rimLength = prismH * 0.42;
+                const rimX = mix(best.x, prismCx, 0.1);
+                const rimY = mix(best.y, prismCy, 0.1);
+                const rim = ctx.createLinearGradient(rimX, rimY, rimX + rimLength * 0.5, rimY + rimLength);
+                rim.addColorStop(0, `rgba(255,255,255,${0.5 * strength})`);
+                rim.addColorStop(0.35, `rgba(120,180,255,${0.3 * strength})`);
+                rim.addColorStop(0.7, `rgba(255,120,190,${0.22 * strength})`);
+                rim.addColorStop(1, "rgba(255,255,255,0)");
+                ctx.strokeStyle = rim;
+                ctx.lineWidth = 2.6;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(rimX, rimY);
+                ctx.lineTo(rimX + rimLength * 0.5, rimY + rimLength);
                 ctx.stroke();
             }
         }

@@ -289,7 +289,7 @@ function initPrism(canvas, still) {
 
         const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * camera.position.z;
         const halfWidth = visibleHeight * camera.aspect * 0.5;
-        const xFraction = compact ? 0.88 : 0.70;
+        const xFraction = compact ? 0.88 : 0.66;
 
         state.baseX = (xFraction * 2 - 1) * halfWidth;
         state.baseY = compact ? -0.2 : 0.02;
