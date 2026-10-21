@@ -61,6 +61,67 @@ function initPrism(canvas, still) {
     });
     geometry.center();
 
+    /* ---------- 2d ışık katmanı için prizma geometrisi ---------- */
+    // ön yüzün üç köşesini sahne uzayında tutuyoruz; ışık katmanı bunları
+    // ekrana yansıtıp giriş/çıkış noktalarını buradan hesaplıyor
+
+    geometry.computeBoundingBox();
+
+    const bounds = geometry.boundingBox;
+    const offsetX = (bounds.min.x + bounds.max.x) * 0.5;
+    const offsetY = (bounds.min.y + bounds.max.y) * 0.5;
+    const frontZ = bounds.max.z;
+
+    const frontCorners = [
+        new THREE.Vector3(0 - offsetX, 1.92 - offsetY, frontZ),
+        new THREE.Vector3(-0.99 - offsetX, -1.16 - offsetY, frontZ),
+        new THREE.Vector3(0.99 - offsetX, -1.16 - offsetY, frontZ)
+    ];
+
+    const projected = [
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+        new THREE.Vector3()
+    ];
+
+    function publishFrame(time) {
+        scene.updateMatrixWorld(true);
+
+        // kamera matrisleri ilk karede henuz guncel olmayabiliyor
+        camera.updateMatrixWorld();
+        camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+
+        const frameWidth = canvas.clientWidth;
+        const frameHeight = canvas.clientHeight;
+
+        for (let i = 0; i < 3; i++) {
+            projected[i]
+                .copy(frontCorners[i])
+                .applyMatrix4(prism.matrixWorld)
+                .project(camera);
+        }
+
+        window.__prismGeometry = {
+            time,
+            width: frameWidth,
+            height: frameHeight,
+            corners: [
+                {
+                    x: (projected[0].x * 0.5 + 0.5) * frameWidth,
+                    y: (-projected[0].y * 0.5 + 0.5) * frameHeight
+                },
+                {
+                    x: (projected[1].x * 0.5 + 0.5) * frameWidth,
+                    y: (-projected[1].y * 0.5 + 0.5) * frameHeight
+                },
+                {
+                    x: (projected[2].x * 0.5 + 0.5) * frameWidth,
+                    y: (-projected[2].y * 0.5 + 0.5) * frameHeight
+                }
+            ]
+        };
+    }
+
     const glass = new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
         metalness: 0,
@@ -138,82 +199,9 @@ function initPrism(canvas, still) {
     rim.renderOrder = 2;
     prism.add(rim);
 
-    /* ---------- rainbow beam ---------- */
-
-    const beamMaterial = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        uniforms: {
-            uTime: { value: 0 }
-        },
-        vertexShader: /* glsl */ `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: /* glsl */ `
-            varying vec2 vUv;
-            uniform float uTime;
-
-            vec3 hsv2rgb(vec3 c) {
-                vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-                vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-                return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-            }
-
-            void main() {
-                vec2 uv = vUv;
-
-                vec3 color = hsv2rgb(vec3(mix(0.0, 0.82, uv.y), 0.88, 1.0));
-
-                float band = smoothstep(0.0, 0.26, uv.y) * smoothstep(1.0, 0.74, uv.y);
-                float ends = smoothstep(0.0, 0.1, uv.x) * smoothstep(1.0, 0.9, uv.x);
-                float core = exp(-pow((uv.y - 0.5) * 4.8, 2.0));
-                float shimmer = 0.9 + 0.1 * sin(uv.x * 9.0 - uTime * 0.7 + uv.y * 6.0);
-
-                float alpha = band * ends * (0.12 + core * 0.25) * shimmer;
-                color = mix(color, vec3(1.0), core * 0.2);
-
-                gl_FragColor = vec4(color, alpha);
-            }
-        `
-    });
-
-    const beam = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 1.55), beamMaterial);
-    beam.position.set(3.25, 0.15, -3.2);
-    beam.rotation.z = -0.23;
-    scene.add(beam);
-
-    const streakMaterial = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        vertexShader: /* glsl */ `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: /* glsl */ `
-            varying vec2 vUv;
-            void main() {
-                float line = pow(1.0 - smoothstep(0.0, 1.0, abs(vUv.y - 0.5) * 2.0), 3.0);
-                float ends = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
-                gl_FragColor = vec4(vec3(1.0), line * ends * 0.2);
-            }
-        `
-    });
-
-    const streak = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 0.11), streakMaterial);
-    streak.position.set(3.35, 0.44, -3.05);
-    streak.rotation.z = -0.23;
-    scene.add(streak);
+    /* ---------- eski sabit isin plane'i kaldirildi ---------- */
+    /* 2d isik katmani (beam.js) bu isin govdesini kendisi cizer;
+       eski sabit rainbow plane'i ile ayni seyi cift ciziyordu. */
 
     /* ---------- ambient details ---------- */
 
@@ -222,7 +210,7 @@ function initPrism(canvas, still) {
         new THREE.MeshBasicMaterial({
             map: createGlowTexture(),
             transparent: true,
-            opacity: 0.14,
+            opacity: 0.035,
             depthWrite: false,
             blending: THREE.AdditiveBlending
         })
@@ -301,7 +289,7 @@ function initPrism(canvas, still) {
 
         const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * camera.position.z;
         const halfWidth = visibleHeight * camera.aspect * 0.5;
-        const xFraction = compact ? 0.88 : 0.74;
+        const xFraction = compact ? 0.88 : 0.70;
 
         state.baseX = (xFraction * 2 - 1) * halfWidth;
         state.baseY = compact ? -0.2 : 0.02;
@@ -312,9 +300,6 @@ function initPrism(canvas, still) {
         prismRig.position.set(state.baseX, state.baseY, 0);
         prismRig.scale.setScalar(state.scale);
         glow.position.set(state.baseX, state.baseY, -4.2);
-
-        beam.position.y = compact ? -0.28 : 0.12;
-        streak.position.y = compact ? 0.02 : 0.44;
     }
 
     function updateScene(time) {
@@ -335,10 +320,8 @@ function initPrism(canvas, still) {
         prismRig.position.x = state.baseX + pointerX * 0.1;
         prismRig.position.y = state.baseY + Math.sin(time * 0.55) * 0.045 - Math.min(scroll * 0.0006, 0.2) - state.wheel * 0.08;
 
-        beamMaterial.uniforms.uTime.value = time;
-        beam.rotation.z = -0.25 + Math.sin(time * 0.11) * 0.02;
-        streak.rotation.z = -0.25 + Math.sin(time * 0.11 + 0.3) * 0.015;
         particles.rotation.z = Math.sin(time * 0.05) * 0.025;
+        publishFrame(time);
     }
 
     function render() {

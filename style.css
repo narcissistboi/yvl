@@ -44,7 +44,8 @@ body {
 
 /* ---------- 3d canvas ---------- */
 
-#prism-canvas {
+#prism-canvas,
+#beam-canvas {
     position: fixed;
     inset: 0;
     z-index: 0;
@@ -54,6 +55,22 @@ body {
     background: #000;
     opacity: 1;
     pointer-events: none;
+    transition: opacity 0.8s ease;
+}
+
+#prism-canvas {
+    z-index: 0;
+    background: #000;
+    opacity: 1;
+    transition: opacity 0.8s ease;
+}
+
+/* 2d isik katmani: prizmanin uzerinde, ekran modunda karisim */
+#beam-canvas {
+    z-index: 1;
+    background: transparent;
+    mix-blend-mode: screen;
+    opacity: 0.95;
     transition: opacity 0.8s ease;
 }
 
@@ -168,6 +185,10 @@ body {
 
     #prism-canvas {
         opacity: 0.42;
+    }
+
+    #beam-canvas {
+        opacity: 0.6;
     }
 }
 
