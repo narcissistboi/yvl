@@ -29,6 +29,8 @@ html {
 body {
     margin: 0;
     min-height: 100svh;
+    display: flex;
+    flex-direction: column;
     font-family: var(--font);
     color: var(--ink);
     background: var(--bg);
@@ -197,13 +199,13 @@ body.pointer .cursor {
 .stage {
     position: relative;
     z-index: 2;
-    min-height: 100svh;
+    flex: 1 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 15px;
-    padding: 100px 20px 84px;
+    padding: 80px 20px 26px;
 }
 
 .card {
@@ -226,7 +228,7 @@ body.pointer .cursor {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 35px 15px 48px;
+    padding: 30px 15px 40px;
     text-align: center;
     animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
@@ -491,11 +493,9 @@ body.pointer .cursor {
 /* ---------- footer ---------- */
 
 .footer {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 14px;
+    position: relative;
     z-index: 2;
+    padding: 0 0 16px;
     text-align: center;
     font-size: 10.5px;
     font-weight: 500;
@@ -660,7 +660,7 @@ html.entered .stage {
 
 @media (max-width: 700px) {
     .stage {
-        padding: 88px 14px 80px;
+        padding: 88px 14px 22px;
         gap: 13px;
     }
 
