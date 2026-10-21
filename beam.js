@@ -28,7 +28,10 @@
         y: 0.48,
         targetX: 0.62,
         targetY: 0.48,
-        active: false
+        active: false,
+        everMoved: false,   // kullanici fareyi bir kez oynatti mi
+        away: false,        // fare tarayici disinda mi
+        fade: 1             // yansima siddeti (yumusak gecis)
     };
 
     const toggles = { beam: true, reflection: true, caustic: true };
@@ -292,6 +295,10 @@
         pointer.x += (pointer.targetX - pointer.x) * ease;
         pointer.y += (pointer.targetY - pointer.y) * ease;
 
+        // fare pencereden cikarsa yansima yumusakca karsinir
+        const fadeTarget = pointer.away ? 0 : 1;
+        pointer.fade += (fadeTarget - pointer.fade) * (1 - Math.exp(-(delta || 16) * 0.006));
+
         /* ---------- optik çözüm ---------- */
 
         // vgpu mantığı: yükseklik kaynağı (lamba) oynatır, genişlik çarpma noktasını seçer
@@ -506,7 +513,7 @@
             }
 
             const near = 1 - smoothstep(prismH * 0.2, prismH * 1.7, bestDist);
-            const strength = near * 1.0;
+            const strength = near * pointer.fade;
 
             if (strength > 0.01) {
                 // parlama imlecin tam altinda durur
@@ -534,9 +541,11 @@
         const width = Math.max(1, window.innerWidth);
         const height = Math.max(1, window.innerHeight);
 
-        pointer.targetX = event.clientX / width;
-        pointer.targetY = event.clientY / height;
+        pointer.targetX = clamp(event.clientX / width, 0, 1);
+        pointer.targetY = clamp(event.clientY / height, 0, 1);
         pointer.active = true;
+        pointer.everMoved = true;
+        pointer.away = false;
     }
 
     // pointermove bazi tarayici/cihazlarda gelmeyebiliyor; mousemove yedegi
@@ -550,20 +559,22 @@
         if (touch) setPointerFromEvent(touch);
     }, { passive: true });
 
-    // imlec pencereyi terk etince otomatik moda don
+    // fare pencereden cikarsa yansima yumsusakca soner (donmez, ziplamaz)
     document.addEventListener("mouseleave", () => {
+        pointer.away = true;
         pointer.active = false;
     }, { passive: true });
 
     window.addEventListener("blur", () => {
+        pointer.away = true;
         pointer.active = false;
     }, { passive: true });
 
-    // dokunmatik / hareketsiz durumda otomatik pointer (vgpu davranışı)
+    // dokunmatik / hareketsiz durumda otomatik pointer (vgpu davranisi)
     function autoPointer(time) {
-        // gercek bir fare/hareket varsa otomatik yol devre disi kalir
-        // (eski kodda reduced motion acikken imlec surekli eziliyordu)
-        if (pointer.active) return;
+        // kullanici fareyi bir kez oynattiysa otomatik yol bir daha calismaz
+        // (fare pencereden cikinca yansima donmeye devam ediyordu)
+        if (pointer.everMoved) return;
 
         if (reduceMotion) {
             pointer.targetX = 0.5;
