@@ -55,9 +55,12 @@ function detectDeviceTier() {
         if (!gl) return -1;
 
         const info = gl.getExtension("WEBGL_debug_renderer_info");
-        const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
+        const renderer = String(
+            info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)
+        );
 
-        if (/swiftshader|llvmpipe|softwarerasterizer|software|mesa offscreen/i.test(renderer)) {
+        // donanim hizlandirma kapaliyken chrome swiftshader kullanir
+        if (/swiftshader|llvmpipe|softwarerasterizer|software|basic render|mesa offscreen|angle \(software/i.test(renderer)) {
             return -1;
         }
     } catch (error) {
@@ -73,6 +76,13 @@ function detectDeviceTier() {
     return 2;
 }
 
+/* ---------- lite mod ---------- */
+// yazilim render / zayif cihaz: 2d katman da sadelestirilir
+function enableLiteMode() {
+    window.__liteMode = true;
+    document.documentElement.classList.add("lite");
+}
+
 if (canvas) {
     const tier = detectDeviceTier();
 
@@ -80,13 +90,17 @@ if (canvas) {
         // ekran karti yok: 2d mod, webgl hic denenmez
         window.__sceneMode = "2d";
         canvas.style.display = "none";
+        enableLiteMode();
     } else {
+        if (tier === 0) enableLiteMode();
+
         try {
             initPrism(canvas, reduceMotion, tier);
         } catch (error) {
             console.warn("Prism background disabled:", error);
             canvas.style.display = "none";
             window.__sceneMode = "2d";
+            enableLiteMode();
         }
     }
 
@@ -513,8 +527,14 @@ function initPrism(canvas, still, tier) {
         quality.samples++;
         if (delta > 28) quality.slow++;
 
-        // 60 kare olmadan karar verme: tek tek takilmalar yaniltmasin
-        if (quality.samples < 60) return;
+        // ilk kareler cok yavassa beklemeden 2d moda gec
+        if (quality.samples === 5 && quality.slow >= 4) {
+            switchTo2D();
+            return;
+        }
+
+        // 20 kare olmadan karar verme: tek tek takilmalar yaniltmasin
+        if (quality.samples < 20) return;
 
         const slowRatio = quality.slow / quality.samples;
         quality.samples = 0;
@@ -535,6 +555,7 @@ function initPrism(canvas, still, tier) {
         if (window.__sceneMode === "2d") return;
 
         window.__sceneMode = "2d";
+        enableLiteMode();
         running = false;
         cancelAnimationFrame(frameId);
         canvas.style.display = "none";

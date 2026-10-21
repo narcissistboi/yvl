@@ -75,6 +75,11 @@ body {
     transition: opacity 0.8s ease;
 }
 
+/* lite mod (yazilim render / zayif cihaz): karisim modu pahali, kapatilir */
+html.lite #beam-canvas {
+    mix-blend-mode: normal;
+}
+
 /* ---------- sahne ---------- */
 
 .hero {

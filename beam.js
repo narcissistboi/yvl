@@ -20,6 +20,8 @@
     const DISPERSION_GAIN = 2.3;
 
     const WAVELENGTHS = [408, 436, 464, 492, 520, 548, 576, 604, 632, 664, 692];
+    // yazilim render icin azaltilmis yelpaze (daha az cizim = daha akici)
+    const LITE_WAVELENGTHS = [412, 452, 496, 540, 584, 628, 676];
 
     /* ---------- durum ---------- */
 
@@ -46,6 +48,11 @@
             pointer.active = true;
         },
         draw() {
+            if (window.__liteMode !== lite) {
+                lite = window.__liteMode === true;
+                resize();
+            }
+
             const geometry = window.__sceneMode === "2d"
                 ? fallbackGeometry()
                 : window.__prismGeometry;
@@ -66,10 +73,12 @@
     let width = 0;
     let height = 0;
     let dpr = 1;
+    let lite = false;      // yazilim render / zayif cihaz
 
     function resize() {
         // yumusak bir isik icin 1.25x yeterli; 2x tam ekran canvas pahali
-        dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+        // lite modda daha da dusuk cozunurluk (yazilim render icin kritik)
+        dpr = lite ? 0.6 : Math.min(window.devicePixelRatio || 1, 1.25);
         width = window.innerWidth;
         height = window.innerHeight;
         canvas.width = Math.max(1, Math.round(width * dpr));
@@ -190,16 +199,18 @@
         ctx.closePath();
         ctx.fill();
 
-        // ic gecis
-        const inner = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
-        inner.addColorStop(0, "rgba(255,255,255,0.12)");
-        inner.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.strokeStyle = inner;
-        ctx.lineWidth = 2.4;
-        ctx.beginPath();
-        ctx.moveTo(L.x, L.y);
-        ctx.lineTo(T.x, T.y);
-        ctx.stroke();
+        if (!lite) {
+            // ic gecis
+            const inner = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
+            inner.addColorStop(0, "rgba(255,255,255,0.12)");
+            inner.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.strokeStyle = inner;
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.moveTo(L.x, L.y);
+            ctx.lineTo(T.x, T.y);
+            ctx.stroke();
+        }
 
         // kenarlar
         const edge = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
@@ -233,12 +244,14 @@
             return g;
         };
 
-        ctx.strokeStyle = makeStyle(alpha * 0.07);
-        ctx.lineWidth = core * 9;
-        ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x1, y1);
-        ctx.stroke();
+        if (!lite) {
+            ctx.strokeStyle = makeStyle(alpha * 0.07);
+            ctx.lineWidth = core * 9;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+        }
 
         ctx.strokeStyle = makeStyle(alpha * 0.16);
         ctx.lineWidth = core * 3.2;
@@ -254,7 +267,7 @@
         ctx.lineTo(x1, y1);
         ctx.stroke();
 
-        if (hot) {
+        if (hot && !lite) {
             ctx.strokeStyle = makeStyle(alpha * 0.5);
             ctx.lineWidth = core * 0.42;
             ctx.beginPath();
@@ -372,27 +385,31 @@
         ctx.globalCompositeOperation = "lighter";
 
         if (toggles.beam) {
-            // duvardaki geniş ışık sızıntısı
-            const spill = ctx.createLinearGradient(source.x, source.y, aim.x, aim.y);
-            spill.addColorStop(0, "rgba(255,255,255,0)");
-            spill.addColorStop(0.55, "rgba(190,205,255,0.018)");
-            spill.addColorStop(1, "rgba(210,220,255,0.045)");
-            ctx.strokeStyle = spill;
-            ctx.lineWidth = prismH * 0.5;
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(source.x, source.y);
-            ctx.lineTo(aim.x, aim.y);
-            ctx.stroke();
+            // duvardaki geniş ışık sızıntısı (lite modda cizilmez: cok alan kaplar)
+            if (!lite) {
+                const spill = ctx.createLinearGradient(source.x, source.y, aim.x, aim.y);
+                spill.addColorStop(0, "rgba(255,255,255,0)");
+                spill.addColorStop(0.55, "rgba(190,205,255,0.018)");
+                spill.addColorStop(1, "rgba(210,220,255,0.045)");
+                ctx.strokeStyle = spill;
+                ctx.lineWidth = prismH * 0.5;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(source.x, source.y);
+                ctx.lineTo(aim.x, aim.y);
+                ctx.stroke();
+            }
 
             // gelen beyaz ışın
-            glowLine(source.x, source.y, aim.x, aim.y, [1, 1, 1], 0.85, 1.5, true, true);
+            glowLine(source.x, source.y, aim.x, aim.y, [1, 1, 1], 0.85, 1.5, true, !lite);
 
             // cam içindeki yol
             glowLine(aim.x, aim.y, exit.x, exit.y, [1, 1, 1], 0.95, 2.1, true);
 
             // çıkış yelpazesi: önce saydam bir spektrum tabakası
-            const extremeAngles = WAVELENGTHS.map((nm) => {
+            const wavelengths = lite ? LITE_WAVELENGTHS : WAVELENGTHS;
+
+            const extremeAngles = wavelengths.map((nm) => {
                 const index = refractiveIndex(nm);
                 return baseAngle + ((index - nAvg) / nAvg) * DISPERSION_GAIN;
             });
@@ -422,8 +439,8 @@
             ctx.closePath();
             ctx.fill();
 
-            for (let i = 0; i < WAVELENGTHS.length; i++) {
-                const nm = WAVELENGTHS[i];
+            for (let i = 0; i < wavelengths.length; i++) {
+                const nm = wavelengths[i];
                 const rgb = wavelengthToRgb(nm);
                 const index = refractiveIndex(nm);
                 const delta = (index - nAvg) / nAvg;
@@ -431,6 +448,18 @@
 
                 const ex = exit.x + Math.cos(angle) * fanLength;
                 const ey = exit.y + Math.sin(angle) * fanLength;
+
+                if (lite) {
+                    // yazilim render: duz renk, tek cizgi (gradient pahali)
+                    ctx.strokeStyle = rgba(rgb, 0.5);
+                    ctx.lineWidth = 2.4;
+                    ctx.lineCap = "round";
+                    ctx.beginPath();
+                    ctx.moveTo(exit.x, exit.y);
+                    ctx.lineTo(ex, ey);
+                    ctx.stroke();
+                    continue;
+                }
 
                 const g = ctx.createLinearGradient(exit.x, exit.y, ex, ey);
                 g.addColorStop(0, rgba(rgb, 0.66));
@@ -454,25 +483,31 @@
             }
 
             // giriş ve çıkış parlamaları
-            softBlob(aim.x, aim.y, prismH * 0.12, [1, 1, 1], 0.3);
-            softBlob(exit.x, exit.y, prismH * 0.1, [1, 1, 1], 0.28);
+            softBlob(aim.x, aim.y, prismH * (lite ? 0.09 : 0.12), [1, 1, 1], 0.3);
+            softBlob(exit.x, exit.y, prismH * (lite ? 0.08 : 0.1), [1, 1, 1], 0.28);
         }
 
         if (toggles.caustic) {
             // çıkış huzmesinin düştüğü duvar lekesi
             const spotX = exit.x + Math.cos(baseAngle) * fanLength * 0.72;
             const spotY = exit.y + Math.sin(baseAngle) * fanLength * 0.72;
-            softBlob(spotX, spotY, prismH * 0.95, [0.59, 0.67, 1], 0.07);
-            softBlob(spotX, spotY, prismH * 0.4, [1, 0.94, 0.86], 0.06);
 
-            for (let i = 0; i < WAVELENGTHS.length; i++) {
-                const nm = WAVELENGTHS[i];
-                const rgb = wavelengthToRgb(nm);
-                const index = refractiveIndex(nm);
-                const angle = baseAngle + ((index - nAvg) / nAvg) * DISPERSION_GAIN;
-                const sx = exit.x + Math.cos(angle) * fanLength * 0.66;
-                const sy = exit.y + Math.sin(angle) * fanLength * 0.66;
-                softBlob(sx, sy, prismH * 0.34, rgb, 0.07);
+            if (lite) {
+                // yazilim render: tek leke, duz renk
+                softBlob(spotX, spotY, prismH * 0.6, [0.7, 0.76, 1], 0.09);
+            } else {
+                softBlob(spotX, spotY, prismH * 0.95, [0.59, 0.67, 1], 0.07);
+                softBlob(spotX, spotY, prismH * 0.4, [1, 0.94, 0.86], 0.06);
+
+                for (let i = 0; i < WAVELENGTHS.length; i++) {
+                    const nm = WAVELENGTHS[i];
+                    const rgb = wavelengthToRgb(nm);
+                    const index = refractiveIndex(nm);
+                    const angle = baseAngle + ((index - nAvg) / nAvg) * DISPERSION_GAIN;
+                    const sx = exit.x + Math.cos(angle) * fanLength * 0.66;
+                    const sy = exit.y + Math.sin(angle) * fanLength * 0.66;
+                    softBlob(sx, sy, prismH * 0.34, rgb, 0.07);
+                }
             }
         }
 
@@ -519,8 +554,14 @@
                 // parlama imlecin tam altinda durur
                 const gx = inside ? px : mix(best.x, prismCx, 0.3);
                 const gy = inside ? py : mix(best.y, prismCy, 0.3);
-                softBlob(gx, gy, prismH * 0.75, [0.84, 0.89, 1], 0.34 * strength);
-                softBlob(gx, gy, prismH * 0.2, [1, 1, 1], 0.42 * strength);
+
+                if (lite) {
+                    // yazilim render: tek kucuk leke
+                    softBlob(gx, gy, prismH * 0.34, [0.9, 0.93, 1], 0.4 * strength);
+                } else {
+                    softBlob(gx, gy, prismH * 0.75, [0.84, 0.89, 1], 0.34 * strength);
+                    softBlob(gx, gy, prismH * 0.2, [1, 1, 1], 0.42 * strength);
+                }
 
                 // kenarda kısa parlama
                 ctx.strokeStyle = `rgba(255,255,255,${0.4 * strength})`;
@@ -628,6 +669,7 @@
 
     // kare siniri ekranin yenileme hizina gore (60/120/144/180Hz)
     function frameLimit() {
+        if (lite) return 1000 / 30;
         return 1000 / (window.__refreshRate || 60);
     }
 
@@ -638,6 +680,13 @@
         requestAnimationFrame(tick);
 
         if (document.hidden) return;
+
+        // prism.js lite modu acabilir (yazilim renderer tespiti)
+        if (window.__liteMode !== lite) {
+            lite = window.__liteMode === true;
+            resize();
+        }
+
         if (time - lastDraw < frameLimit()) return;
 
         // sahne ekrandan kaybolduysa cizme (bos bolum)
