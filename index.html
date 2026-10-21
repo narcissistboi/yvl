@@ -4,115 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Young Vamp Life — discord.gg/yvl</title>
-    <meta name="description" content="Young Vamp Life — yeni sunucu, yeni tag. discord.gg/yvl">
-    <meta name="theme-color" content="#080808">
+    <meta name="description" content="Young Vamp Life — discord.gg/yvl">
+    <meta name="theme-color" content="#000000">
     <meta property="og:title" content="Young Vamp Life — discord.gg/yvl">
-    <meta property="og:description" content="Young Vamp Life · yeni sunucu · yeni tag">
+    <meta property="og:description" content="Young Vamp Life · discord.gg/yvl">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://narcissistboi.github.io/yvl/">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%230a0a0a'/%3E%3Ctext x='50' y='73' font-family='Arial' font-size='66' font-weight='900' text-anchor='middle' fill='%23fa0202'%3Ey%3C/text%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23000000'/%3E%3Ctext x='50' y='73' font-family='Arial' font-size='66' font-weight='900' text-anchor='middle' fill='%23fa0202'%3Ey%3C/text%3E%3C/svg%3E">
+    <link rel="preload" href="geist-serif.otf" as="font" type="font/otf" crossorigin>
 
-    <script>
-        document.documentElement.classList.add('js');
-        try {
-            if (sessionStorage.getItem('yvl:entered') === '1') {
-                document.documentElement.classList.add('entered');
-            }
-        } catch (e) {}
-    </script>
-
-    <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
-    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,900&display=swap">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- arka plan -->
-    <div class="bg" aria-hidden="true">
-        <span class="glow glow--a"></span>
-        <span class="glow glow--b"></span>
-        <span class="glow glow--c"></span>
-        <span class="grain"></span>
-        <span class="vignette"></span>
-    </div>
-
-    <div class="cursor" id="cursor" aria-hidden="true"></div>
-
-    <!-- link kopyala -->
-    <button class="copy" id="copy" type="button" aria-label="discord.gg/yvl linkini kopyala" data-tip="Linki kopyala">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M10.2 13.8a4.4 4.4 0 0 0 6.22 0l2.1-2.1a4.4 4.4 0 0 0-6.22-6.22l-1.2 1.2"/>
-            <path d="M13.8 10.2a4.4 4.4 0 0 0-6.22 0l-2.1 2.1a4.4 4.4 0 0 0 6.22 6.22l1.2-1.2"/>
-        </svg>
-    </button>
+    <!-- 3d prizma -->
+    <canvas id="prism-canvas" aria-hidden="true"></canvas>
 
     <!-- profil -->
     <main class="stage">
-        <section class="card profile">
-            <div class="avatar-wrap">
-                <div class="avatar" role="img" aria-label="Young Vamp Life">
-                    <span class="avatar-text" lang="en">
-                        <span>YOUNG</span>
-                        <span>VAMP</span>
-                        <span>LIFE</span>
-                    </span>
-                </div>
-                <span class="presence" title="online" aria-label="online"></span>
-            </div>
-
+        <section class="profile">
             <h1 class="name" lang="en">
-                <span>YOUNG</span>
-                <span>VAMP</span>
-                <span>LIFE</span>
-            </h1>
-
-            <nav class="socials" aria-label="Bağlantılar">
-                <a class="social" href="https://discord.gg/yvl" target="_blank" rel="noopener noreferrer" aria-label="Discord — discord.gg/yvl" title="discord.gg/yvl">
-                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286ZM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189Zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
-                    </svg>
+                <a class="name-link" href="https://discord.gg/yvl" target="_blank" rel="noopener noreferrer" title="discord.gg/yvl">
+                    <span>YOUNG</span>
+                    <span>VAMP</span>
+                    <span>LIFE</span>
                 </a>
-            </nav>
-
-            <p class="tagline">
-                <span class="tagline-dot"></span>
-                yeni sunucu · yeni tag
-            </p>
+            </h1>
         </section>
-
-        <a class="card invite" href="https://discord.gg/yvl" target="_blank" rel="noopener noreferrer">
-            <span class="invite-art" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286ZM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189Zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
-                </svg>
-            </span>
-
-            <span class="invite-body">
-                <span class="invite-title">discord.gg/yvl</span>
-                <span class="invite-sub">sunucuya katıl · yeni tag</span>
-                <span class="invite-bar" aria-hidden="true"><span></span></span>
-            </span>
-
-            <span class="invite-go" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M7 17 17 7M9 7h8v8"/>
-                </svg>
-            </span>
-        </a>
     </main>
 
     <footer class="footer" lang="en">YOUNG VAMP LIFE <span>·</span> 2026</footer>
 
-    <!-- giriş ekranı -->
-    <div class="enter" id="enter" role="button" tabindex="0" aria-label="Siteye girmek için tıkla">
-        <div class="enter-inner">
-            <span class="enter-text">click to enter...</span>
-            <span class="enter-sub" lang="en">DISCORD.GG/YVL</span>
-        </div>
-    </div>
-
-    <div class="toast" id="toast" role="status" aria-live="polite">link kopyalandı</div>
-
-    <script src="script.js"></script>
+    <script type="module" src="prism.js"></script>
 </body>
 </html>
