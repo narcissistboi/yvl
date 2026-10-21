@@ -272,11 +272,27 @@ function initPrism(canvas, still) {
         targetX: 0,
         targetY: 0,
         scroll: 0,
+        scrollProgress: 0,
         wheel: 0,
         baseX: 0,
         baseY: 0,
         scale: 1
     };
+
+    /* ---------- kaydırma ---------- */
+
+    function applyScroll() {
+        const scrollTop = window.scrollY || 0;
+        const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        const progress = THREE.MathUtils.clamp(scrollTop / maxScroll, 0, 1);
+
+        state.scroll = scrollTop;
+        state.scrollProgress = progress;
+
+        // sahne kaydırma ilerledikçe söner (alt bölüm boş siyah)
+        const fade = THREE.MathUtils.clamp(1 - progress * 1.15, 0, 1);
+        document.documentElement.style.setProperty("--scene-fade", fade.toFixed(3));
+    }
 
     function layout() {
         const width = window.innerWidth;
@@ -303,8 +319,8 @@ function initPrism(canvas, still) {
     }
 
     function updateScene(time) {
-        const scroll = window.scrollY || 0;
-        const scrollTurn = Math.min(scroll * 0.0012, 0.5);
+        const progress = state.scrollProgress;
+        const scrollTurn = progress * 0.45;
 
         const pointerX = still ? 0 : state.pointerX;
         const pointerY = still ? 0 : state.pointerY;
@@ -318,7 +334,13 @@ function initPrism(canvas, still) {
         prism.rotation.z = -0.04 + Math.sin(time * 0.14) * 0.035;
 
         prismRig.position.x = state.baseX + pointerX * 0.1;
-        prismRig.position.y = state.baseY + Math.sin(time * 0.55) * 0.045 - Math.min(scroll * 0.0006, 0.2) - state.wheel * 0.08;
+        prismRig.position.y = state.baseY
+            + Math.sin(time * 0.55) * 0.045
+            + progress * 2.1
+            - state.wheel * 0.08;
+
+        // kaydırma ile birlikte prizma hafifçe uzaklaşır
+        prismRig.scale.setScalar(state.scale * (1 - progress * 0.12));
 
         particles.rotation.z = Math.sin(time * 0.05) * 0.025;
         publishFrame(time);
@@ -329,12 +351,19 @@ function initPrism(canvas, still) {
     }
 
     layout();
+    applyScroll();
 
     if (still) {
         updateScene(0);
         render();
         window.addEventListener("resize", () => {
             layout();
+            applyScroll();
+            updateScene(0);
+            render();
+        }, { passive: true });
+        window.addEventListener("scroll", () => {
+            applyScroll();
             updateScene(0);
             render();
         }, { passive: true });
@@ -343,10 +372,11 @@ function initPrism(canvas, still) {
 
     window.addEventListener("resize", () => {
         layout();
+        applyScroll();
     }, { passive: true });
 
     window.addEventListener("scroll", () => {
-        state.scroll = window.scrollY || 0;
+        applyScroll();
     }, { passive: true });
 
     window.addEventListener("wheel", (event) => {

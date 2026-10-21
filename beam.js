@@ -440,50 +440,18 @@
             const strength = near * 1.0;
 
             if (strength > 0.01) {
-                // cam üstündeki yumuşak spekülar parlama
+                // cam üstündeki yumuşak spekülar parlama (çizgi yok, sadece ışık)
                 const gx = mix(best.x, prismCx, 0.3);
                 const gy = mix(best.y, prismCy, 0.3);
                 softBlob(gx, gy, prismH * 0.75, [0.84, 0.89, 1], 0.34 * strength);
                 softBlob(gx, gy, prismH * 0.2, [1, 1, 1], 0.42 * strength);
 
-                // stüdyo ışığı çizgisi gibi uzun, yumuşak parlama
-                ctx.save();
-                ctx.translate(gx, gy);
-                ctx.rotate(-0.42);
-                ctx.scale(1, 0.1);
-                const streak = ctx.createRadialGradient(0, 0, 0, 0, 0, prismW * 0.55);
-                streak.addColorStop(0, `rgba(255,255,255,${0.5 * strength})`);
-                streak.addColorStop(0.45, `rgba(225,235,255,${0.16 * strength})`);
-                streak.addColorStop(1, "rgba(255,255,255,0)");
-                ctx.fillStyle = streak;
-                ctx.beginPath();
-                ctx.arc(0, 0, prismW * 0.55, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
-
-                // cam kenarında kenar parlaması
-                ctx.strokeStyle = `rgba(255,255,255,${0.5 * strength})`;
-                ctx.lineWidth = 1.8;
+                // kenarda kısa parlama
+                ctx.strokeStyle = `rgba(255,255,255,${0.4 * strength})`;
+                ctx.lineWidth = 1.6;
                 ctx.beginPath();
                 ctx.moveTo(best.x, best.y);
-                ctx.lineTo(mix(best.x, prismCx, 0.22), mix(best.y, prismCy, 0.22));
-                ctx.stroke();
-
-                // kenarda spektral parıltı (prizmanın kırılma hissi)
-                const rimLength = prismH * 0.42;
-                const rimX = mix(best.x, prismCx, 0.1);
-                const rimY = mix(best.y, prismCy, 0.1);
-                const rim = ctx.createLinearGradient(rimX, rimY, rimX + rimLength * 0.5, rimY + rimLength);
-                rim.addColorStop(0, `rgba(255,255,255,${0.5 * strength})`);
-                rim.addColorStop(0.35, `rgba(120,180,255,${0.3 * strength})`);
-                rim.addColorStop(0.7, `rgba(255,120,190,${0.22 * strength})`);
-                rim.addColorStop(1, "rgba(255,255,255,0)");
-                ctx.strokeStyle = rim;
-                ctx.lineWidth = 2.6;
-                ctx.lineCap = "round";
-                ctx.beginPath();
-                ctx.moveTo(rimX, rimY);
-                ctx.lineTo(rimX + rimLength * 0.5, rimY + rimLength);
+                ctx.lineTo(mix(best.x, prismCx, 0.14), mix(best.y, prismCy, 0.14));
                 ctx.stroke();
             }
         }

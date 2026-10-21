@@ -22,6 +22,7 @@
     --ink: #fafafa;
     --red: #fa0202;
     --font: "Geist Serif", Georgia, "Times New Roman", serif;
+    --scene-fade: 1;
 }
 
 html {
@@ -61,7 +62,7 @@ body {
 #prism-canvas {
     z-index: 0;
     background: #000;
-    opacity: 1;
+    opacity: var(--scene-fade);
     transition: opacity 0.8s ease;
 }
 
@@ -70,11 +71,20 @@ body {
     z-index: 1;
     background: transparent;
     mix-blend-mode: screen;
-    opacity: 0.95;
+    opacity: calc(var(--scene-fade) * 0.95);
     transition: opacity 0.8s ease;
 }
 
 /* ---------- sahne ---------- */
+
+.hero {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+}
 
 .stage {
     position: relative;
@@ -155,6 +165,15 @@ body {
     color: rgba(250, 2, 2, 0.5);
 }
 
+/* ---------- alt bolum (bos alan) ---------- */
+
+.below-fold {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    height: 100svh;
+    background: var(--bg);
+}
 /* ---------- animasyonlar ---------- */
 
 @keyframes rise {
@@ -186,11 +205,11 @@ body {
     }
 
     #prism-canvas {
-        opacity: 0.42;
+        opacity: calc(var(--scene-fade) * 0.42);
     }
 
     #beam-canvas {
-        opacity: 0.6;
+        opacity: calc(var(--scene-fade) * 0.6);
     }
 }
 
