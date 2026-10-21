@@ -43,8 +43,10 @@
             pointer.active = true;
         },
         draw() {
-            const geometry = window.__prismGeometry;
-            if (geometry) drawBeam(geometry);
+            const geometry = window.__sceneMode === "2d"
+                ? fallbackGeometry()
+                : window.__prismGeometry;
+            if (geometry) drawBeam(geometry, 16);
         }
     };
 
@@ -63,7 +65,8 @@
     let dpr = 1;
 
     function resize() {
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        // yumusak bir isik icin 1.25x yeterli; 2x tam ekran canvas pahali
+        dpr = Math.min(window.devicePixelRatio || 1, 1.25);
         width = window.innerWidth;
         height = window.innerHeight;
         canvas.width = Math.max(1, Math.round(width * dpr));
@@ -164,6 +167,55 @@
         return `rgba(${c(rgb[0])},${c(rgb[1])},${c(rgb[2])},${a})`;
     }
 
+    /* ---------- 2d cam (ekran kartı olmayan cihazlar icin) ---------- */
+
+    function drawGlass2D(T, L, R) {
+        ctx.save();
+        ctx.globalCompositeOperation = "source-over";
+
+        // govde
+        const body = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
+        body.addColorStop(0, "rgba(150,185,255,0.17)");
+        body.addColorStop(0.45, "rgba(255,255,255,0.05)");
+        body.addColorStop(1, "rgba(110,140,255,0.11)");
+
+        ctx.fillStyle = body;
+        ctx.beginPath();
+        ctx.moveTo(T.x, T.y);
+        ctx.lineTo(L.x, L.y);
+        ctx.lineTo(R.x, R.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // ic gecis
+        const inner = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
+        inner.addColorStop(0, "rgba(255,255,255,0.12)");
+        inner.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.strokeStyle = inner;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(L.x, L.y);
+        ctx.lineTo(T.x, T.y);
+        ctx.stroke();
+
+        // kenarlar
+        const edge = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
+        edge.addColorStop(0, "rgba(255,255,255,0.75)");
+        edge.addColorStop(0.5, "rgba(190,215,255,0.45)");
+        edge.addColorStop(1, "rgba(255,255,255,0.6)");
+        ctx.strokeStyle = edge;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // tepe kenarinda parlama
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.beginPath();
+        ctx.arc(T.x, T.y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
     /* ---------- çizim ---------- */
 
     function glowLine(x0, y0, x1, y1, rgb, alpha, core, hot, fadeIn) {
@@ -220,7 +272,7 @@
         ctx.fill();
     }
 
-    function drawBeam(frame) {
+    function drawBeam(frame, delta) {
         ctx.clearRect(0, 0, width, height);
         if (!frame || !frame.corners) return;
 
@@ -235,9 +287,10 @@
         const prismCx = (L.x + R.x + T.x) / 3;
         const prismCy = (prismTop + prismBottom) / 2;
 
-        // pointer yumuşatma
-        pointer.x += (pointer.targetX - pointer.x) * 0.08;
-        pointer.y += (pointer.targetY - pointer.y) * 0.08;
+        // pointer yumuşatma (kare hızından bağımsız: her fps'te aynı his)
+        const ease = 1 - Math.exp(-(delta || 16) * 0.011);
+        pointer.x += (pointer.targetX - pointer.x) * ease;
+        pointer.y += (pointer.targetY - pointer.y) * ease;
 
         /* ---------- optik çözüm ---------- */
 
@@ -303,6 +356,11 @@
         const fanLength = clamp(Math.min(prismW * 0.8, room), 150, 430);
 
         /* ---------- çizim katmanları ---------- */
+
+        // ekran karti yoksa cam 2d olarak cizilir
+        if (window.__sceneMode === "2d") {
+            drawGlass2D(T, L, R);
+        }
 
         ctx.globalCompositeOperation = "lighter";
 
@@ -518,20 +576,58 @@
         pointer.targetY = 0.5 + Math.sin(phase) * 0.34;
     }
 
+    // 2d modda (ekran karti yoksa) prizmanin ekran koordinatlari
+    function fallbackGeometry() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const compact = w < 900;
+        const centerX = (compact ? 0.88 : 0.66) * w;
+        const centerY = h * (compact ? 0.5 : 0.5);
+        const prismH = Math.min(h * 0.62, 520);
+        const prismW = prismH * 0.52;
+
+        return {
+            width: w,
+            height: h,
+            time: 0,
+            corners: [
+                { x: centerX, y: centerY - prismH * 0.5 },
+                { x: centerX - prismW * 0.5, y: centerY + prismH * 0.5 },
+                { x: centerX + prismW * 0.5, y: centerY + prismH * 0.5 }
+            ]
+        };
+    }
+
+    // isik katmani 3d sahneyle ayni ritimde cizilir (kare hizindan bagimsiz yumulatma)
+    const FRAME_LIMIT = 1000 / 90;
+    let lastDraw = 0;
+    let lastTime = 0;
+
     function tick(time) {
+        requestAnimationFrame(tick);
+
+        if (document.hidden) return;
+        if (time - lastDraw < FRAME_LIMIT) return;
+
+        const delta = lastTime ? Math.min(100, time - lastTime) : 16;
+        lastDraw = time;
+        lastTime = time;
+
         autoPointer(time);
 
         // prizma geometrisi three.js sahnesinden gelir
-        const geometry = window.__prismGeometry;
+        // (ekran karti yoksa 2d modda kendi geometrimiz kullanilir)
+        const geometry = window.__sceneMode === "2d"
+            ? fallbackGeometry()
+            : window.__prismGeometry;
+
         if (geometry) {
             try {
-                drawBeam(geometry);
+                drawBeam(geometry, delta);
             } catch (error) {
                 console.warn("Isik katmani durdu:", error);
             }
         }
-
-        requestAnimationFrame(tick);
     }
 
     requestAnimationFrame(tick);

@@ -8,29 +8,39 @@ import * as THREE from "./three.module.min.js";
 const canvas = document.getElementById("prism-canvas");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// "3d" = three.js sahnesi, "2d" = ekran karti olmayan cihazlar icin
+window.__sceneMode = "3d";
+window.__prismQuality = 2;
+
 if (canvas) {
     try {
         initPrism(canvas, reduceMotion);
     } catch (error) {
         console.warn("Prism background disabled:", error);
         canvas.style.display = "none";
+        // ekran karti yoksa 2d mod: isik katmani cami kendisi cizer
+        window.__sceneMode = "2d";
     }
 }
 
 function initPrism(canvas, still) {
+    const deviceRatio = window.devicePixelRatio || 1;
+
     const renderer = new THREE.WebGLRenderer({
         canvas,
-        antialias: true,
+        // yuksek cozunurluklu ekranlarda MSAA pahali; kapatiyoruz
+        antialias: deviceRatio < 1.5,
         alpha: false,
         powerPreference: "high-performance"
     });
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+    renderer.setPixelRatio(Math.min(deviceRatio, 1.25));
     renderer.setClearColor(0x000000, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    renderer.transmissionResolutionScale = 0.8;
+    // transmission hedefi kucuk tutulur (her karede sahne yeniden isleniyor)
+    renderer.transmissionResolutionScale = 0.5;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
@@ -129,7 +139,9 @@ function initPrism(canvas, still) {
         transmission: 1,
         thickness: 1.55,
         ior: 1.52,
-        dispersion: 5.5,
+        // dispersion acikken transmission shader'i 3 ornekli donguye giriyor
+        // (her piksel icin 3x maliyet). Gökkuşağı artık 2d isik katmaninda.
+        dispersion: 0,
         iridescence: 1,
         iridescenceIOR: 1.35,
         iridescenceThicknessRange: [100, 680],
@@ -392,15 +404,86 @@ function initPrism(canvas, still) {
     let running = true;
     const clock = new THREE.Clock();
 
-    function frame() {
+    /* ---------- uyarlanabilir kalite ---------- */
+
+    const quality = {
+        level: 2,          // 2 = tam, 1 = orta, 0 = hafif
+        samples: 0,
+        slow: 0
+    };
+
+    function applyQuality(level) {
+        if (level >= quality.level) return;
+        quality.level = level;
+
+        if (level === 1) {
+            renderer.setPixelRatio(1);
+            renderer.transmissionResolutionScale = 0.35;
+            glass.iridescence = 0.4;
+        } else {
+            renderer.setPixelRatio(0.75);
+            renderer.transmissionResolutionScale = 0.25;
+            glass.iridescence = 0;
+        }
+
+        glass.needsUpdate = true;
+        layout();
+    }
+
+    function monitorPerformance(delta) {
+        quality.samples++;
+        if (delta > 28) quality.slow++;
+
+        // 60 kare olmadan karar verme: tek tek takilmalar yaniltmasin
+        if (quality.samples < 60) return;
+
+        const slowRatio = quality.slow / quality.samples;
+        quality.samples = 0;
+        quality.slow = 0;
+
+        window.__prismQuality = quality.level;
+
+        // karelerin yarisi+ yavassa kaliteyi dusur (asla yukseltmiyoruz)
+        if (slowRatio > 0.5 && quality.level > 0) {
+            applyQuality(quality.level - 1);
+        } else if (slowRatio > 0.7 && quality.level === 0) {
+            // en dusuk seviye de yetmiyor: ekran kartini birak, 2d moda gec
+            switchTo2D();
+        }
+    }
+
+    function switchTo2D() {
+        if (window.__sceneMode === "2d") return;
+
+        window.__sceneMode = "2d";
+        running = false;
+        cancelAnimationFrame(frameId);
+        canvas.style.display = "none";
+    }
+
+    // 120/144/180hz ekranlarda da akici kalsin: sadece 90fps uzerini kis
+    // (cok hizli ekranlarda 3 katina kadar bos guc tasinir)
+    const FRAME_LIMIT = 1000 / 90;
+    let lastFrame = 0;
+
+    function frame(now) {
         if (!running) return;
         frameId = requestAnimationFrame(frame);
 
-        state.pointerX += (state.targetX - state.pointerX) * 0.045;
-        state.pointerY += (state.targetY - state.pointerY) * 0.045;
+        if (now - lastFrame < FRAME_LIMIT) return;
+        const delta = lastFrame ? Math.min(100, now - lastFrame) : 16;
+        lastFrame = now;
+
+        // yumuşatma kare hızından bağımsız: her fps'te ayni his
+        const ease = 1 - Math.exp(-delta * 0.009);
+
+        state.pointerX += (state.targetX - state.pointerX) * ease;
+        state.pointerY += (state.targetY - state.pointerY) * ease;
 
         updateScene(clock.getElapsedTime());
         render();
+
+        monitorPerformance(delta);
     }
 
     document.addEventListener("visibilitychange", () => {
@@ -410,11 +493,12 @@ function initPrism(canvas, still) {
         } else {
             running = true;
             clock.getDelta();
-            frame();
+            lastFrame = 0;
+            requestAnimationFrame(frame);
         }
     });
 
-    frame();
+    requestAnimationFrame(frame);
 }
 
 /* ---------- generated textures ---------- */
