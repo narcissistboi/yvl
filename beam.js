@@ -535,6 +535,23 @@
         ctx.globalCompositeOperation = "source-over";
     }
 
+    /* ---------- kaydırma ---------- */
+
+    // kaydırma ilerlemesi + sahne solmasi (3d modda da calisir)
+    function applyScroll() {
+        const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        const progress = Math.min(1, (window.scrollY || 0) / max);
+
+        window.__scrollProgress = progress;
+
+        const fade = Math.max(0, Math.min(1, 1 - progress * 1.15));
+        document.documentElement.style.setProperty("--scene-fade", fade.toFixed(3));
+    }
+
+    window.addEventListener("scroll", applyScroll, { passive: true });
+    window.addEventListener("resize", applyScroll, { passive: true });
+    applyScroll();
+
     /* ---------- girdi ---------- */
 
     function setPointerFromEvent(event) {
@@ -609,8 +626,11 @@
         };
     }
 
-    // isik katmani 3d sahneyle ayni ritimde cizilir (kare hizindan bagimsiz yumulatma)
-    const FRAME_LIMIT = 1000 / 90;
+    // kare siniri ekranin yenileme hizina gore (60/120/144/180Hz)
+    function frameLimit() {
+        return 1000 / (window.__refreshRate || 60);
+    }
+
     let lastDraw = 0;
     let lastTime = 0;
 
@@ -618,7 +638,17 @@
         requestAnimationFrame(tick);
 
         if (document.hidden) return;
-        if (time - lastDraw < FRAME_LIMIT) return;
+        if (time - lastDraw < frameLimit()) return;
+
+        // sahne ekrandan kaybolduysa cizme (bos bolum)
+        const fade = parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue("--scene-fade")
+        ) || 0;
+        if (fade <= 0.001) {
+            lastDraw = time;
+            lastTime = time;
+            return;
+        }
 
         const delta = lastTime ? Math.min(100, time - lastTime) : 16;
         lastDraw = time;

@@ -11,19 +11,91 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").match
 // "3d" = three.js sahnesi, "2d" = ekran karti olmayan cihazlar icin
 window.__sceneMode = "3d";
 window.__prismQuality = 2;
+window.__refreshRate = 60;
 
-if (canvas) {
-    try {
-        initPrism(canvas, reduceMotion);
-    } catch (error) {
-        console.warn("Prism background disabled:", error);
-        canvas.style.display = "none";
-        // ekran karti yoksa 2d mod: isik katmani cami kendisi cizer
-        window.__sceneMode = "2d";
-    }
+/* ---------- ekran yenileme hizini olc ---------- */
+// 60 / 120 / 144 / 180 Hz ekranlarda animasyon ekranin hizinda olmali
+function detectRefreshRate() {
+    return new Promise((resolve) => {
+        const samples = [];
+        let last = 0;
+
+        function tick(now) {
+            if (last) samples.push(now - last);
+            last = now;
+
+            if (samples.length < 24) {
+                requestAnimationFrame(tick);
+                return;
+            }
+
+            samples.sort((a, b) => a - b);
+            const median = samples[Math.floor(samples.length / 2)];
+            const hz = Math.round(1000 / median);
+            resolve(Math.max(30, Math.min(240, hz)));
+        }
+
+        requestAnimationFrame(tick);
+    });
 }
 
-function initPrism(canvas, still) {
+/* ---------- cihaz yetenegini olc ---------- */
+// 2 = guclu, 1 = orta, 0 = zayif, -1 = yazilim renderer (2d mod)
+function detectDeviceTier() {
+    // veri tasarrufu / pil modu
+    const connection = navigator.connection;
+    if (connection && (connection.saveData || /2g/.test(connection.effectiveType || ""))) {
+        return 0;
+    }
+
+    // yazilim renderer (swiftshader / llvmpipe) -> ekran karti yok
+    try {
+        const probe = document.createElement("canvas");
+        const gl = probe.getContext("webgl2") || probe.getContext("webgl");
+        if (!gl) return -1;
+
+        const info = gl.getExtension("WEBGL_debug_renderer_info");
+        const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
+
+        if (/swiftshader|llvmpipe|softwarerasterizer|software|mesa offscreen/i.test(renderer)) {
+            return -1;
+        }
+    } catch (error) {
+        /* tarayici desteklemiyorsa varsayilana devam */
+    }
+
+    const cores = navigator.hardwareConcurrency || 4;
+    const memory = navigator.deviceMemory || 4;
+    const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    if (mobile || cores <= 4 || memory <= 4) return 1;
+    if (cores <= 8 && memory <= 8) return 1;
+    return 2;
+}
+
+if (canvas) {
+    const tier = detectDeviceTier();
+
+    if (tier < 0) {
+        // ekran karti yok: 2d mod, webgl hic denenmez
+        window.__sceneMode = "2d";
+        canvas.style.display = "none";
+    } else {
+        try {
+            initPrism(canvas, reduceMotion, tier);
+        } catch (error) {
+            console.warn("Prism background disabled:", error);
+            canvas.style.display = "none";
+            window.__sceneMode = "2d";
+        }
+    }
+
+    detectRefreshRate().then((hz) => {
+        window.__refreshRate = hz;
+    });
+}
+
+function initPrism(canvas, still, tier) {
     const deviceRatio = window.devicePixelRatio || 1;
 
     const renderer = new THREE.WebGLRenderer({
@@ -285,6 +357,7 @@ function initPrism(canvas, still) {
         targetY: 0,
         scroll: 0,
         scrollProgress: 0,
+        pointerMoved: false,
         wheel: 0,
         baseX: 0,
         baseY: 0,
@@ -294,16 +367,11 @@ function initPrism(canvas, still) {
     /* ---------- kaydırma ---------- */
 
     function applyScroll() {
-        const scrollTop = window.scrollY || 0;
-        const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-        const progress = THREE.MathUtils.clamp(scrollTop / maxScroll, 0, 1);
+        // kaydırma ilerlemesi beam.js tarafindan tutulur (her iki modda da calisir)
+        const progress = window.__scrollProgress || 0;
 
-        state.scroll = scrollTop;
+        state.scroll = window.scrollY || 0;
         state.scrollProgress = progress;
-
-        // sahne kaydırma ilerledikçe söner (alt bölüm boş siyah)
-        const fade = THREE.MathUtils.clamp(1 - progress * 1.15, 0, 1);
-        document.documentElement.style.setProperty("--scene-fade", fade.toFixed(3));
     }
 
     function layout() {
@@ -365,6 +433,11 @@ function initPrism(canvas, still) {
     layout();
     applyScroll();
 
+    // cihaz yetenegine gore baslangic kalitesi
+    if (typeof tier === "number" && tier < 2) {
+        applyQuality(tier);
+    }
+
     if (still) {
         updateScene(0);
         render();
@@ -391,13 +464,13 @@ function initPrism(canvas, still) {
         applyScroll();
     }, { passive: true });
 
-    window.addEventListener("wheel", (event) => {
-        state.wheel = THREE.MathUtils.clamp(state.wheel + event.deltaY * 0.0011, -0.65, 0.65);
+    window.addEventListener("wheel", (event) => {        state.wheel = THREE.MathUtils.clamp(state.wheel + event.deltaY * 0.0011, -0.65, 0.65);
     }, { passive: true });
 
     window.addEventListener("pointermove", (event) => {
         state.targetX = (event.clientX / window.innerWidth) * 2 - 1;
         state.targetY = (event.clientY / window.innerHeight) * 2 - 1;
+        state.pointerMoved = true;
     }, { passive: true });
 
     let frameId = 0;
@@ -406,27 +479,33 @@ function initPrism(canvas, still) {
 
     /* ---------- uyarlanabilir kalite ---------- */
 
+    // 2 = guclu cihaz (transmission + iridescence), 1 = orta, 0 = zayif
+    const qualityPresets = {
+        2: { pixelRatio: () => Math.min(deviceRatio, 1.25), transmission: 1, scale: 0.5, iridescence: 1, opacity: 1 },
+        1: { pixelRatio: () => 1, transmission: 0, scale: 0.25, iridescence: 0.5, opacity: 0.46 },
+        0: { pixelRatio: () => 0.75, transmission: 0, scale: 0.25, iridescence: 0, opacity: 0.58 }
+    };
+
     const quality = {
-        level: 2,          // 2 = tam, 1 = orta, 0 = hafif
+        level: 2,
         samples: 0,
         slow: 0
     };
 
     function applyQuality(level) {
-        if (level >= quality.level) return;
+        level = Math.max(0, Math.min(2, level));
+        if (level === quality.level) return;
         quality.level = level;
 
-        if (level === 1) {
-            renderer.setPixelRatio(1);
-            renderer.transmissionResolutionScale = 0.35;
-            glass.iridescence = 0.4;
-        } else {
-            renderer.setPixelRatio(0.75);
-            renderer.transmissionResolutionScale = 0.25;
-            glass.iridescence = 0;
-        }
-
+        const preset = qualityPresets[level];
+        renderer.setPixelRatio(preset.pixelRatio());
+        renderer.transmissionResolutionScale = preset.scale;
+        glass.transmission = preset.transmission;
+        glass.opacity = preset.opacity;
+        glass.iridescence = preset.iridescence;
         glass.needsUpdate = true;
+
+        window.__prismQuality = level;
         layout();
     }
 
@@ -461,16 +540,24 @@ function initPrism(canvas, still) {
         canvas.style.display = "none";
     }
 
-    // 120/144/180hz ekranlarda da akici kalsin: sadece 90fps uzerini kis
-    // (cok hizli ekranlarda 3 katina kadar bos guc tasinir)
-    const FRAME_LIMIT = 1000 / 90;
+    // kare siniri ekranin yenileme hizina gore (60/120/144/180Hz)
+    function frameLimit() {
+        return 1000 / (window.__refreshRate || 60);
+    }
+
     let lastFrame = 0;
 
     function frame(now) {
         if (!running) return;
         frameId = requestAnimationFrame(frame);
 
-        if (now - lastFrame < FRAME_LIMIT) return;
+        // sahne tamamen kaybolduysa (alt bos bolum) render etme
+        if (state.scrollProgress > 0.995 && !state.pointerMoved) {
+            lastFrame = now;
+            return;
+        }
+
+        if (now - lastFrame < frameLimit()) return;
         const delta = lastFrame ? Math.min(100, now - lastFrame) : 16;
         lastFrame = now;
 
