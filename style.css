@@ -167,12 +167,14 @@ body {
 
 /* ---------- alt bolum (bos alan) ---------- */
 
+/* saydam kalsin: sabit canvas (prizma + isik) alt bolumun uzerinden de
+   gorunmeye devam ediyor, boylece kaydirirken ortada kesin bir cizgi olusmuyor */
 .below-fold {
     position: relative;
-    z-index: 2;
+    z-index: 1;
     flex: 0 0 auto;
     height: 100svh;
-    background: var(--bg);
+    background: transparent;
 }
 /* ---------- animasyonlar ---------- */
 
