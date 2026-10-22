@@ -1,7 +1,0 @@
-node_modules
-.next
-out
-*.log
-tsconfig.tsbuildinfo
-AGENTS.md
-CLAUDE.md
