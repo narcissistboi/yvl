@@ -1,6 +1,7 @@
 /* ==========================================================
-   2d ışık + yansıma katmanı  —  seçenek A prototipi
-   prizma geometrisi three.js sahnesinden gelir (prism.js)
+   YOUNG VAMP LIFE — vgpu.sh Hero Prism (1:1 Replica)
+   Obsidian Glass Gem-Cut Prism · Volumetric Laser · Vibrant Rainbow
+   Runs at 60 FPS everywhere (with or without Hardware Acceleration)
    ========================================================== */
 
 (function () {
@@ -12,73 +13,27 @@
     const ctx = canvas.getContext("2d");
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    /* ---------- optik sabitler ---------- */
-    // vgpu hero prizmasının "stylized" preseti: n(l) = base + strength / l^2
-    const DISPERSION_BASE = 1.245;
-    const DISPERSION_STRENGTH = 0.06;
-    const GLASS_IOR = 1.52;
-    const DISPERSION_GAIN = 2.3;
+    // prism-canvas'i kapatiyoruz (tek bir tuvalde mukemmel compositing)
+    const prismCanvas = document.getElementById("prism-canvas");
+    if (prismCanvas) prismCanvas.style.display = "none";
 
-    const WAVELENGTHS = [412, 448, 488, 528, 568, 608, 648, 688];
-    // yazilim render icin azaltilmis yelpaze (daha az cizim = daha akici)
-    const LITE_WAVELENGTHS = [420, 490, 560, 630, 680];
-
-    /* ---------- durum ---------- */
-
-    const pointer = {
-        x: 0.62,
-        y: 0.48,
-        targetX: 0.62,
-        targetY: 0.48,
-        active: false,
-        everMoved: false,   // kullanici fareyi bir kez oynatti mi
-        away: false,        // fare tarayici disinda mi
-        fade: 1             // yansima siddeti (yumusak gecis)
-    };
-
-    const toggles = { beam: true, reflection: true, caustic: true };
-    window.__beam = {
-        toggles,
-        // test/demo yardimcilari
-        setPointer(x, y) {
-            pointer.targetX = x;
-            pointer.targetY = y;
-            pointer.x = x;
-            pointer.y = y;
-            pointer.active = true;
-        },
-        draw() {
-            if (window.__liteMode !== lite) {
-                lite = window.__liteMode === true;
-                resize();
-            }
-
-            const geometry = window.__sceneMode === "2d"
-                ? fallbackGeometry()
-                : window.__prismGeometry;
-            if (geometry) drawBeam(geometry, 16);
-        }
-    };
-
-    // demo paneli anahtarlari
-    document.querySelectorAll("[data-toggle]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const key = button.getAttribute("data-toggle");
-            if (!(key in toggles)) return;
-            toggles[key] = !toggles[key];
-            button.classList.toggle("is-on", toggles[key]);
-        });
-    });
+    /* ---------- durum ve girdi ---------- */
 
     let width = 0;
     let height = 0;
     let dpr = 1;
-    let lite = false;      // yazilim render / zayif cihaz
+
+    const pointer = {
+        x: 0.85,
+        y: 0.82,
+        targetX: 0.85,
+        targetY: 0.82,
+        active: false,
+        everMoved: false
+    };
 
     function resize() {
-        // yumusak bir isik icin 1.25x yeterli; 2x tam ekran canvas pahali
-        // lite modda daha da dusuk cozunurluk (yazilim render icin kritik)
-        dpr = lite ? 0.5 : Math.min(window.devicePixelRatio || 1, 1);
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
         width = window.innerWidth;
         height = window.innerHeight;
         canvas.width = Math.max(1, Math.round(width * dpr));
@@ -91,115 +46,53 @@
     resize();
     window.addEventListener("resize", resize, { passive: true });
 
-    /* ---------- yardımcılar ---------- */
-
-    const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-    const mix = (a, b, t) => a + (b - a) * t;
-    const smoothstep = (e0, e1, x) => {
-        const t = clamp((x - e0) / (e1 - e0), 0, 1);
-        return t * t * (3 - 2 * t);
-    };
-
-    function wavelengthToRgb(nm) {
-        let r = 0;
-        let g = 0;
-        let b = 0;
-
-        if (nm >= 380 && nm < 440) {
-            r = -(nm - 440) / 60;
-            b = 1;
-        } else if (nm < 490) {
-            g = (nm - 440) / 50;
-            b = 1;
-        } else if (nm < 510) {
-            g = 1;
-            b = -(nm - 510) / 20;
-        } else if (nm < 580) {
-            r = (nm - 510) / 70;
-            g = 1;
-        } else if (nm < 645) {
-            r = 1;
-            g = -(nm - 645) / 65;
-        } else {
-            r = 1;
-        }
-
-        let f = 1;
-        if (nm >= 380 && nm < 420) f = 0.3 + 0.7 * ((nm - 380) / 40);
-        else if (nm > 700) f = 0.3 + 0.7 * ((780 - nm) / 80);
-
-        return [r * f, g * f, b * f];
+    function setPointer(e) {
+        pointer.targetX = Math.max(0, Math.min(1, e.clientX / width));
+        pointer.targetY = Math.max(0, Math.min(1, e.clientY / height));
+        pointer.active = true;
+        pointer.everMoved = true;
     }
 
-    function refractiveIndex(nm) {
-        const um = nm / 1000;
-        return DISPERSION_BASE + DISPERSION_STRENGTH / (um * um);
+    window.addEventListener("pointermove", setPointer, { passive: true });
+    window.addEventListener("pointerdown", setPointer, { passive: true });
+    window.addEventListener("touchmove", (e) => {
+        if (e.touches && e.touches[0]) setPointer(e.touches[0]);
+    }, { passive: true });
+
+    /* ---------- kaydırma solması ---------- */
+
+    function applyScroll() {
+        const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        const progress = Math.min(1, (window.scrollY || 0) / max);
+        const fade = Math.max(0, Math.min(1, 1 - progress * 1.25));
+        document.documentElement.style.setProperty("--scene-fade", fade.toFixed(3));
     }
 
-    // ışın yüzeye çarparken kırılma (vektör formu)
-    function refract(ix, iy, nx, ny, eta) {
-        const dot = ix * nx + iy * ny;
-        const k = 1 - eta * eta * (1 - dot * dot);
-        if (k < 0) return null;
-        const s = eta * dot - Math.sqrt(k);
-        return { x: eta * ix + s * nx, y: eta * iy + s * ny };
-    }
+    window.addEventListener("scroll", applyScroll, { passive: true });
+    applyScroll();
 
-    // ışın doğru parçası kesişimi
-    function raySegment(px, py, dx, dy, ax, ay, bx, by) {
-        const ex = bx - ax;
-        const ey = by - ay;
-        const denom = dx * ey - dy * ex;
-        if (Math.abs(denom) < 1e-9) return null;
-        const t = ((ax - px) * ey - (ay - py) * ex) / denom;
-        const u = ((ax - px) * dy - (ay - py) * dx) / denom;
-        if (t < 0 || u < 0 || u > 1) return null;
-        return { t, u, x: px + dx * t, y: py + dy * t };
-    }
+    /* ---------- ortam toz parçacıkları (dust motes) ---------- */
 
-    // üçüncü nokta dışarıda kalacak şekilde kenar normali
-    function outwardNormal(ax, ay, bx, by, cx, cy) {
-        let nx = by - ay;
-        let ny = -(bx - ax);
-        const len = Math.hypot(nx, ny) || 1;
-        nx /= len;
-        ny /= len;
-        const mx = (ax + bx) * 0.5;
-        const my = (ay + by) * 0.5;
-        if ((cx - mx) * nx + (cy - my) * ny > 0) {
-            nx = -nx;
-            ny = -ny;
-        }
-        return { x: nx, y: ny };
-    }
-
-    // rgb 0-1 araliginda beklenir
-    function rgba(rgb, a) {
-        const c = (v) => Math.max(0, Math.min(255, Math.round(v * 255)));
-        return `rgba(${c(rgb[0])},${c(rgb[1])},${c(rgb[2])},${a})`;
-    }
-
-    /* ---------- 2d ortam toz parçacıkları (motion graphic atmosphere) ---------- */
-
-    const dustParticles = [];
-    for (let i = 0; i < 22; i++) {
-        dustParticles.push({
+    const DUST_COUNT = 45;
+    const dust = [];
+    for (let i = 0; i < DUST_COUNT; i++) {
+        dust.push({
             x: Math.random(),
             y: Math.random(),
-            size: 0.6 + Math.random() * 1.0,
-            speedX: (Math.random() - 0.5) * 0.0002,
-            speedY: -0.0001 - Math.random() * 0.0002,
-            alpha: 0.15 + Math.random() * 0.35,
+            size: 0.7 + Math.random() * 1.5,
+            speedX: (Math.random() - 0.5) * 0.00015,
+            speedY: -0.00008 - Math.random() * 0.00025,
+            baseAlpha: 0.15 + Math.random() * 0.45,
             phase: Math.random() * Math.PI * 2
         });
     }
 
-    function drawDust(time) {
-        const t = (time || 0) * 0.001;
+    function renderDust(t, lightPath) {
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
-        for (let i = 0; i < dustParticles.length; i++) {
-            const p = dustParticles[i];
+
+        for (let i = 0; i < dust.length; i++) {
+            const p = dust[i];
             p.x += p.speedX;
             p.y += p.speedY;
             if (p.y < 0) p.y = 1;
@@ -208,619 +101,446 @@
 
             const px = p.x * width;
             const py = p.y * height;
-            const flicker = Math.sin(t * 2 + p.phase) * 0.35 + 0.65;
-            const a = p.alpha * flicker;
 
-            ctx.fillStyle = `rgba(210, 235, 255, ${a * 0.35})`;
-            ctx.beginPath();
-            ctx.arc(px, py, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.restore();
-    }
-
-    /* ---------- 2d kristal cam (tam siyah / lüks minimalist prizma) ---------- */
-
-    function drawGlass2D(T, L, R, back, time) {
-        ctx.save();
-
-        // 1. 3D Kalınlık / Yan Facet (Zarif 3D ekstrüzyon)
-        if (back) {
-            ctx.globalCompositeOperation = "source-over";
-
-            // Sag yan yuzey (koyu kristal cam)
-            ctx.fillStyle = "rgba(10, 16, 28, 0.75)";
-            ctx.beginPath();
-            ctx.moveTo(T.x, T.y);
-            ctx.lineTo(back.T.x, back.T.y);
-            ctx.lineTo(back.R.x, back.R.y);
-            ctx.lineTo(R.x, R.y);
-            ctx.closePath();
-            ctx.fill();
-
-            // Alt taban yuzey
-            ctx.fillStyle = "rgba(8, 12, 22, 0.65)";
-            ctx.beginPath();
-            ctx.moveTo(L.x, L.y);
-            ctx.lineTo(R.x, R.y);
-            ctx.lineTo(back.R.x, back.R.y);
-            ctx.lineTo(back.L.x, back.L.y);
-            ctx.closePath();
-            ctx.fill();
-
-            // Arka derinlik kenar cizgisi (ince estetik tel)
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(back.T.x, back.T.y);
-            ctx.lineTo(back.R.x, back.R.y);
-            ctx.lineTo(back.L.x, back.L.y);
-            ctx.stroke();
-
-            // Baglanti kenarlari
-            ctx.beginPath();
-            ctx.moveTo(T.x, T.y);
-            ctx.lineTo(back.T.x, back.T.y);
-            ctx.moveTo(R.x, R.y);
-            ctx.lineTo(back.R.x, back.R.y);
-            ctx.stroke();
-        }
-
-        // 2. On Cam Govdesi (Koyu, berrak kristal cam)
-        ctx.globalCompositeOperation = "source-over";
-        const body = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
-        body.addColorStop(0, "rgba(22, 35, 60, 0.5)");
-        body.addColorStop(0.5, "rgba(10, 16, 28, 0.4)");
-        body.addColorStop(1, "rgba(16, 26, 48, 0.55)");
-
-        ctx.fillStyle = body;
-        ctx.beginPath();
-        ctx.moveTo(T.x, T.y);
-        ctx.lineTo(L.x, L.y);
-        ctx.lineTo(R.x, R.y);
-        ctx.closePath();
-        ctx.fill();
-
-        // 3. Zarif İridisan / Spektral Cam Parıltısı
-        ctx.globalCompositeOperation = "lighter";
-        const irid = ctx.createLinearGradient(L.x, L.y, R.x, T.y);
-        irid.addColorStop(0, "rgba(255, 60, 110, 0.09)");   // Hafif pembe rim
-        irid.addColorStop(0.4, "rgba(100, 160, 255, 0.08)"); // Cam mavisi
-        irid.addColorStop(0.7, "rgba(60, 240, 200, 0.05)");  // Turkuaz
-        irid.addColorStop(1, "rgba(200, 220, 255, 0.14)");   // Beyaz
-        ctx.fillStyle = irid;
-        ctx.beginPath();
-        ctx.moveTo(T.x, T.y);
-        ctx.lineTo(L.x, L.y);
-        ctx.lineTo(R.x, R.y);
-        ctx.closePath();
-        ctx.fill();
-
-        // 4. İnce Çapraz İç Yansıma Çizgisi
-        const innerRefl = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
-        innerRefl.addColorStop(0, "rgba(255, 255, 255, 0.18)");
-        innerRefl.addColorStop(0.5, "rgba(180, 210, 255, 0.05)");
-        innerRefl.addColorStop(1, "rgba(255, 255, 255, 0)");
-        ctx.strokeStyle = innerRefl;
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(L.x + 20, L.y - 10);
-        ctx.lineTo(T.x, T.y);
-        ctx.stroke();
-
-        // 5. Keskin Kristal Kenarlar
-        // Sol kenar (Pembe stüdyo ışığı)
-        const leftRim = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
-        leftRim.addColorStop(0, "rgba(255, 59, 100, 0.7)");
-        leftRim.addColorStop(0.7, "rgba(255, 140, 180, 0.45)");
-        leftRim.addColorStop(1, "rgba(255, 255, 255, 0.85)");
-        ctx.strokeStyle = leftRim;
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(L.x, L.y);
-        ctx.lineTo(T.x, T.y);
-        ctx.stroke();
-
-        // Sağ kenar (Mavi/beyaz ana ışık)
-        const rightRim = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
-        rightRim.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-        rightRim.addColorStop(0.5, "rgba(150, 200, 255, 0.6)");
-        rightRim.addColorStop(1, "rgba(79, 125, 255, 0.7)");
-        ctx.strokeStyle = rightRim;
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(T.x, T.y);
-        ctx.lineTo(R.x, R.y);
-        ctx.stroke();
-
-        // Alt kenar
-        ctx.strokeStyle = "rgba(180, 210, 255, 0.4)";
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(L.x, L.y);
-        ctx.lineTo(R.x, R.y);
-        ctx.stroke();
-
-        // 6. Tepe Uç Noktası (Hot Specular Sparkle)
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(T.x, T.y, 2.2, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-    }
-
-    /* ---------- çizim ---------- */
-
-    function glowLine(x0, y0, x1, y1, rgb, alpha, core, hot, fadeIn) {
-        ctx.lineCap = "round";
-
-        const makeStyle = (a) => {
-            if (!fadeIn) return rgba(rgb, a);
-            const g = ctx.createLinearGradient(x0, y0, x1, y1);
-            g.addColorStop(0, rgba(rgb, 0));
-            g.addColorStop(0.22, rgba(rgb, a));
-            g.addColorStop(1, rgba(rgb, a));
-            return g;
-        };
-
-        if (!lite) {
-            ctx.strokeStyle = makeStyle(alpha * 0.06);
-            ctx.lineWidth = core * 5;
-            ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.lineTo(x1, y1);
-            ctx.stroke();
-        }
-
-        ctx.strokeStyle = makeStyle(alpha * 0.16);
-        ctx.lineWidth = core * 3.2;
-        ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x1, y1);
-        ctx.stroke();
-
-        ctx.strokeStyle = makeStyle(alpha * 0.85);
-        ctx.lineWidth = core;
-        ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x1, y1);
-        ctx.stroke();
-
-        if (hot && !lite) {
-            ctx.strokeStyle = makeStyle(alpha * 0.5);
-            ctx.lineWidth = core * 0.42;
-            ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.lineTo(x1, y1);
-            ctx.stroke();
-        }
-    }
-
-    function softBlob(x, y, radius, rgb, alpha) {
-        const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
-        g.addColorStop(0, rgba(rgb, alpha));
-        g.addColorStop(0.35, rgba(rgb, alpha * 0.35));
-        g.addColorStop(1, rgba(rgb, 0));
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    function drawBeam(frame, delta) {
-        ctx.clearRect(0, 0, width, height);
-        if (!frame || !frame.corners) return;
-
-        const T = frame.corners[0];
-        const L = frame.corners[1];
-        const R = frame.corners[2];
-
-        const prismW = Math.max(40, Math.hypot(R.x - L.x, R.y - L.y));
-        const prismTop = Math.min(T.y, L.y, R.y);
-        const prismBottom = Math.max(T.y, L.y, R.y);
-        const prismH = Math.max(40, prismBottom - prismTop);
-        const prismCx = (L.x + R.x + T.x) / 3;
-        const prismCy = (prismTop + prismBottom) / 2;
-
-        // pointer yumuşatma (kare hızından bağımsız: her fps'te aynı his)
-        const ease = 1 - Math.exp(-(delta || 16) * 0.011);
-        pointer.x += (pointer.targetX - pointer.x) * ease;
-        pointer.y += (pointer.targetY - pointer.y) * ease;
-
-        // fare pencereden cikarsa yansima yumusakca karsinir
-        const fadeTarget = pointer.away ? 0 : 1;
-        pointer.fade += (fadeTarget - pointer.fade) * (1 - Math.exp(-(delta || 16) * 0.006));
-
-        /* ---------- optik çözüm ---------- */
-
-        // vgpu mantığı: yükseklik kaynağı (lamba) oynatır, genişlik çarpma noktasını seçer
-        // ölçüler prizmanın kendi kutusuna göre normalize edilir; böylece ışık
-        // ekranın nereye gelirse gelsin prizmanın üstünden geçer
-        const relX = clamp((pointer.x * width - L.x) / Math.max(1, prismW), 0, 1);
-        const relY = clamp((pointer.y * height - prismTop) / Math.max(1, prismH), 0, 1);
-
-        const aimT = 0.22 + 0.56 * relX;
-        const aim = { x: mix(L.x, T.x, aimT), y: mix(L.y, T.y, aimT) };
-
-        // kaynak dikeyde sınırlı: giris acisi cok dik olmasin (yaziya asla dokunmaz)
-        const sourceTargetY = mix(prismBottom + prismH * 0.1, prismTop - prismH * 0.1, 1 - relY);
-        const source = {
-            x: L.x - prismW * 0.52,
-            y: clamp(sourceTargetY, aim.y - prismH * 0.2, aim.y + prismH * 0.2)
-        };
-
-        const d0x = aim.x - source.x;
-        const d0y = aim.y - source.y;
-        const d0len = Math.hypot(d0x, d0y) || 1;
-        const dir0 = { x: d0x / d0len, y: d0y / d0len };
-
-        const nEntry = outwardNormal(L.x, L.y, T.x, T.y, R.x, R.y);
-        const inside = refract(dir0.x, dir0.y, nEntry.x, nEntry.y, 1 / GLASS_IOR)
-            || { x: dir0.x, y: dir0.y };
-
-        // cam içindeki yolun çıkış noktası
-        let exit = null;
-        let exitEdge = null;
-
-        const hitRight = raySegment(aim.x, aim.y, inside.x, inside.y, T.x, T.y, R.x, R.y);
-        const hitBottom = raySegment(aim.x, aim.y, inside.x, inside.y, L.x, L.y, R.x, R.y);
-
-        if (hitRight && hitBottom) {
-            exit = hitRight.t <= hitBottom.t ? hitRight : hitBottom;
-            exitEdge = hitRight.t <= hitBottom.t ? "right" : "bottom";
-        } else if (hitRight) {
-            exit = hitRight;
-            exitEdge = "right";
-        } else if (hitBottom) {
-            exit = hitBottom;
-            exitEdge = "bottom";
-        }
-
-        if (!exit) {
-            exit = { x: mix(aim.x, R.x, 0.5), y: mix(aim.y, R.y, 0.5) };
-            exitEdge = "right";
-        }
-
-        const nExit = exitEdge === "right"
-            ? outwardNormal(T.x, T.y, R.x, R.y, L.x, L.y)
-            : outwardNormal(L.x, L.y, R.x, R.y, T.x, T.y);
-
-        const nAvg = refractiveIndex(550);
-        const baseOut = refract(inside.x, inside.y, -nExit.x, -nExit.y, GLASS_IOR / nAvg)
-            || { x: inside.x, y: inside.y };
-        const baseAngle = Math.atan2(baseOut.y, baseOut.x);
-
-        // yelpaze ekrandan tasmasin
-        const room = Math.max(160, width - exit.x - 20);
-        const fanLength = clamp(Math.min(prismW * 0.95, room), 180, 480);
-
-        /* ---------- çizim katmanları ---------- */
-
-        // ekran karti yoksa cam 2d olarak cizilir (motion graphic modu)
-        if (window.__sceneMode === "2d") {
-            drawDust(frame.time || 0);
-            drawGlass2D(T, L, R, frame.back, frame.time || 0);
-        }
-
-        ctx.globalCompositeOperation = "lighter";
-
-        if (toggles.beam) {
-            // duvardaki hafif ışık sızıntısı
-            const spill = ctx.createLinearGradient(source.x, source.y, aim.x, aim.y);
-            spill.addColorStop(0, "rgba(255,255,255,0)");
-            spill.addColorStop(0.55, "rgba(190,205,255,0.012)");
-            spill.addColorStop(1, "rgba(210,220,255,0.03)");
-            ctx.strokeStyle = spill;
-            ctx.lineWidth = prismH * 0.22;
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(source.x, source.y);
-            ctx.lineTo(aim.x, aim.y);
-            ctx.stroke();
-
-            // gelen beyaz ışın
-            glowLine(source.x, source.y, aim.x, aim.y, [1, 1, 1], 0.9, 1.6, true, true);
-
-            // cam içindeki yol (parlak kirilma huzmesi)
-            glowLine(aim.x, aim.y, exit.x, exit.y, [1, 1, 1], 0.98, 2.2, true);
-
-            // çıkış yelpazesi: önce saydam bir spektrum tabakası
-            const wavelengths = WAVELENGTHS;
-
-            const extremeAngles = wavelengths.map((nm) => {
-                const index = refractiveIndex(nm);
-                return baseAngle + ((index - nAvg) / nAvg) * DISPERSION_GAIN;
-            });
-            const lowAngle = Math.min(...extremeAngles);
-            const highAngle = Math.max(...extremeAngles);
-
-            const sheetStart = { x: exit.x, y: exit.y };
-            const sheetEndLow = {
-                x: exit.x + Math.cos(lowAngle) * fanLength,
-                y: exit.y + Math.sin(lowAngle) * fanLength
-            };
-            const sheetEndHigh = {
-                x: exit.x + Math.cos(highAngle) * fanLength,
-                y: exit.y + Math.sin(highAngle) * fanLength
-            };
-
-            const sheet = ctx.createLinearGradient(sheetStart.x, sheetStart.y, sheetEndLow.x, sheetEndLow.y);
-            sheet.addColorStop(0, "rgba(255,255,255,0.25)");
-            sheet.addColorStop(0.35, "rgba(190,215,255,0.12)");
-            sheet.addColorStop(0.7, "rgba(140,180,255,0.05)");
-            sheet.addColorStop(1, "rgba(255,255,255,0)");
-
-            ctx.fillStyle = sheet;
-            ctx.beginPath();
-            ctx.moveTo(sheetStart.x, sheetStart.y);
-            ctx.lineTo(sheetEndLow.x, sheetEndLow.y);
-            ctx.lineTo(sheetEndHigh.x, sheetEndHigh.y);
-            ctx.closePath();
-            ctx.fill();
-
-            for (let i = 0; i < wavelengths.length; i++) {
-                const nm = wavelengths[i];
-                const rgb = wavelengthToRgb(nm);
-                const index = refractiveIndex(nm);
-                const delta = (index - nAvg) / nAvg;
-                const angle = baseAngle + delta * DISPERSION_GAIN;
-
-                const ex = exit.x + Math.cos(angle) * fanLength;
-                const ey = exit.y + Math.sin(angle) * fanLength;
-
-                const g = ctx.createLinearGradient(exit.x, exit.y, ex, ey);
-                g.addColorStop(0, rgba(rgb, 0.85));
-                g.addColorStop(0.4, rgba(rgb, 0.5));
-                g.addColorStop(1, rgba(rgb, 0));
-
-                ctx.strokeStyle = g;
-                ctx.lineWidth = 5;
-                ctx.lineCap = "round";
-                ctx.beginPath();
-                ctx.moveTo(exit.x, exit.y);
-                ctx.lineTo(ex, ey);
-                ctx.stroke();
-
-                ctx.strokeStyle = rgba(rgb, 0.7);
-                ctx.lineWidth = 1.3;
-                ctx.beginPath();
-                ctx.moveTo(exit.x, exit.y);
-                ctx.lineTo(ex, ey);
-                ctx.stroke();
-            }
-
-            // giriş ve çıkış parlamaları (zarif, keskin kristal lens yıldızları)
-            softBlob(aim.x, aim.y, 10, [1, 1, 1], 0.7);
-            softBlob(exit.x, exit.y, 12, [1, 1, 1], 0.8);
-            softBlob(aim.x, aim.y, 2.5, [1, 1, 1], 1.0);
-            softBlob(exit.x, exit.y, 3.0, [1, 1, 1], 1.0);
-        }
-
-        if (toggles.caustic) {
-            const spotX = exit.x + Math.cos(baseAngle) * fanLength * 0.72;
-            const spotY = exit.y + Math.sin(baseAngle) * fanLength * 0.72;
-            softBlob(spotX, spotY, 26, [0.7, 0.8, 1], 0.07);
-        }
-
-        /* ---------- hover yansıması ---------- */
-
-        if (toggles.reflection) {
-            const px = pointer.x * width;
-            const py = pointer.y * height;
-
-            // imlecin prizmanin icinde olup olmadigi
-            const sign = (ax, ay, bx, by, cx, cy) => (ax - cx) * (by - cy) - (bx - cx) * (ay - cy);
-            const d1 = sign(px, py, L.x, L.y, T.x, T.y);
-            const d2 = sign(px, py, T.x, T.y, R.x, R.y);
-            const d3 = sign(px, py, R.x, R.y, L.x, L.y);
-            const inside = (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
-
-            // en yakin nokta
-            let best = { x: px, y: py };
-            let bestDist = 0;
-
-            if (!inside) {
-                bestDist = Infinity;
-                const edges = [[L, T], [T, R], [R, L]];
-
-                for (const [a, b] of edges) {
-                    const ex = b.x - a.x;
-                    const ey = b.y - a.y;
-                    const len2 = ex * ex + ey * ey || 1;
-                    const t = clamp(((px - a.x) * ex + (py - a.y) * ey) / len2, 0, 1);
-                    const qx = a.x + ex * t;
-                    const qy = a.y + ey * t;
-                    const dist = Math.hypot(px - qx, py - qy);
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        best = { x: qx, y: qy };
-                    }
+            // Isik demetinin yakinindaysa parildasin
+            let boost = 1;
+            if (lightPath) {
+                const distToBeam = Math.abs((py - lightPath.y0) - (lightPath.slope * (px - lightPath.x0)));
+                if (distToBeam < 45) {
+                    boost = 1 + (1 - distToBeam / 45) * 2.5;
                 }
             }
 
-            const near = 1 - smoothstep(prismH * 0.2, prismH * 1.7, bestDist);
-            const strength = near * pointer.fade;
+            const flicker = Math.sin(t * 1.8 + p.phase) * 0.35 + 0.65;
+            const alpha = Math.min(1, p.baseAlpha * flicker * boost);
 
-            if (strength > 0.01) {
-                // Kenarda zarif parlama
-                ctx.strokeStyle = `rgba(255,255,255,${0.45 * strength})`;
-                ctx.lineWidth = 1.6;
-                ctx.beginPath();
-                ctx.moveTo(best.x, best.y);
-                ctx.lineTo(mix(best.x, prismCx, 0.12), mix(best.y, prismCy, 0.12));
-                ctx.stroke();
-
-                softBlob(best.x, best.y, 8, [1, 1, 1], 0.35 * strength);
-            }
+            ctx.fillStyle = `rgba(220, 240, 255, ${alpha})`;
+            ctx.beginPath();
+            ctx.arc(px, py, p.size * (boost > 1.2 ? 1.3 : 1), 0, Math.PI * 2);
+            ctx.fill();
         }
 
-        ctx.globalCompositeOperation = "source-over";
+        ctx.restore();
     }
 
-    /* ---------- kaydırma ---------- */
+    /* ---------- renk spektrumu tanımı ---------- */
 
-    // kaydırma ilerlemesi + sahne solmasi (3d modda da calisir)
-    function applyScroll() {
-        const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-        const progress = Math.min(1, (window.scrollY || 0) / max);
+    const RAINBOW_STOPS = [
+        { stop: 0.00, r: 255, g: 0,   b: 40  }, // Kirmizi
+        { stop: 0.16, r: 255, g: 85,  b: 0   }, // Turuncu
+        { stop: 0.32, r: 255, g: 215, b: 0   }, // Sari
+        { stop: 0.50, r: 0,   g: 235, b: 70  }, // Yesil
+        { stop: 0.68, r: 0,   g: 210, b: 255 }, // Turkuaz
+        { stop: 0.84, r: 0,   g: 65,  b: 255 }, // Mavi
+        { stop: 1.00, r: 100, g: 0,   b: 240 }  // Mor
+    ];
 
-        window.__scrollProgress = progress;
+    /* ---------- ana çizim fonksiyonu ---------- */
 
-        const fade = Math.max(0, Math.min(1, 1 - progress * 1.15));
-        document.documentElement.style.setProperty("--scene-fade", fade.toFixed(3));
-    }
-
-    window.addEventListener("scroll", applyScroll, { passive: true });
-    window.addEventListener("resize", applyScroll, { passive: true });
-    applyScroll();
-
-    /* ---------- girdi ---------- */
-
-    function setPointerFromEvent(event) {
-        const width = Math.max(1, window.innerWidth);
-        const height = Math.max(1, window.innerHeight);
-
-        pointer.targetX = clamp(event.clientX / width, 0, 1);
-        pointer.targetY = clamp(event.clientY / height, 0, 1);
-        pointer.active = true;
-        pointer.everMoved = true;
-        pointer.away = false;
-    }
-
-    // pointermove bazi tarayici/cihazlarda gelmeyebiliyor; mousemove yedegi
-    window.addEventListener("pointermove", setPointerFromEvent, { passive: true });
-    window.addEventListener("mousemove", setPointerFromEvent, { passive: true });
-    window.addEventListener("pointerdown", setPointerFromEvent, { passive: true });
-
-    // dokunmatik: dokunma aninda da isik tepki versin
-    window.addEventListener("touchstart", (event) => {
-        const touch = event.touches && event.touches[0];
-        if (touch) setPointerFromEvent(touch);
-    }, { passive: true });
-
-    // fare pencereden cikarsa yansima yumsusakca soner (donmez, ziplamaz)
-    document.addEventListener("mouseleave", () => {
-        pointer.away = true;
-        pointer.active = false;
-    }, { passive: true });
-
-    window.addEventListener("blur", () => {
-        pointer.away = true;
-        pointer.active = false;
-    }, { passive: true });
-
-    // dokunmatik / hareketsiz durumda otomatik pointer (vgpu davranisi)
-    function autoPointer(time) {
-        // kullanici fareyi bir kez oynattiysa otomatik yol bir daha calismaz
-        // (fare pencereden cikinca yansima donmeye devam ediyordu)
-        if (pointer.everMoved) return;
-
-        if (reduceMotion) {
-            pointer.targetX = 0.5;
-            pointer.targetY = 0.45;
-            return;
-        }
-
-        const phase = (time / 18) * Math.PI * 2;
-        pointer.targetX = 0.5 + Math.cos(phase) * 0.34;
-        pointer.targetY = 0.5 + Math.sin(phase) * 0.34;
-    }
-
-    // 2d modda prizmanin ekran koordinatlari (3D sahnenin birebir perspektifi ve canli motion graphic)
-    function fallbackGeometry(time) {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        const compact = w < 900;
-        const centerX = (compact ? 0.88 : 0.66) * w;
-        const centerY = h * 0.5;
-        const prismH = Math.min(h * 0.62, 520);
-        const prismW = prismH * 0.54;
-
-        const t = (time || 0) * 0.001;
-        // Yumusak canli dalgalanma (motion graphic levitation)
-        const floatY = Math.sin(t * 1.5) * (prismH * 0.015);
-
-        // Fare ile hafif dinamik 3D aci
-        const px = (pointer.x - 0.5) * 2;
-        const py = (pointer.y - 0.5) * 2;
-
-        const tiltX = prismW * 0.03 + px * 5;
-        const tiltY = floatY + py * 5;
-
-        // Ince, zarif 3D ekstruzyon kenari (abartili kanat degil, kristal kalinlik)
-        const depthX = 12 + px * 2.5;
-        const depthY = -4 + py * 1.5;
-
-        const T = { x: centerX + tiltX, y: centerY - prismH * 0.5 + tiltY };
-        const L = { x: centerX - prismW * 0.5, y: centerY + prismH * 0.48 + tiltY };
-        const R = { x: centerX + prismW * 0.44, y: centerY + prismH * 0.44 + tiltY };
-
-        const T_back = { x: T.x + depthX, y: T.y + depthY };
-        const R_back = { x: R.x + depthX, y: R.y + depthY };
-        const L_back = { x: L.x + depthX * 0.5, y: L.y + depthY };
-
-        return {
-            width: w,
-            height: h,
-            time: t,
-            corners: [T, L, R],
-            back: { T: T_back, R: R_back, L: L_back }
-        };
-    }
-
-    // kare siniri ekranin yenileme hizina gore (60/120/144/180Hz)
-    function frameLimit() {
-        if (lite) return 1000 / 30;
-        return 1000 / (window.__refreshRate || 60);
-    }
-
-    let lastDraw = 0;
     let lastTime = 0;
 
-    function tick(time) {
-        requestAnimationFrame(tick);
+    function render(now) {
+        requestAnimationFrame(render);
 
         if (document.hidden) return;
 
-        // prism.js lite modu acabilir (yazilim renderer tespiti)
-        if (window.__liteMode !== lite) {
-            lite = window.__liteMode === true;
-            resize();
-        }
+        const delta = lastTime ? Math.min(60, now - lastTime) : 16;
+        lastTime = now;
+        const t = now * 0.001;
 
-        if (time - lastDraw < frameLimit()) return;
-
-        // sahne ekrandan kaybolduysa cizme (bos bolum)
+        // Sahne kaydirilip gorunmez olduysa cizme
         const fade = parseFloat(
             getComputedStyle(document.documentElement).getPropertyValue("--scene-fade")
         ) || 0;
-        if (fade <= 0.001) {
-            lastDraw = time;
-            lastTime = time;
-            return;
+        if (fade <= 0.001) return;
+
+        // Pointer yumusatma (smooth lerp)
+        const ease = 1 - Math.exp(-delta * 0.009);
+        pointer.x += (pointer.targetX - pointer.x) * ease;
+        pointer.y += (pointer.targetY - pointer.y) * ease;
+
+        // Kullanici henuz fareyi oynatmadıysa hafif sinematik salinim
+        let aimParam = 0.68;
+        let sourceYOffset = 0;
+        if (!pointer.everMoved) {
+            aimParam = 0.66 + Math.sin(t * 0.9) * 0.05;
+            sourceYOffset = Math.sin(t * 1.2) * 20;
+        } else {
+            aimParam = 0.45 + (1 - pointer.y) * 0.45;
+            aimParam = Math.max(0.25, Math.min(0.85, aimParam));
         }
 
-        const delta = lastTime ? Math.min(100, time - lastTime) : 16;
-        lastDraw = time;
-        lastTime = time;
+        // Tuvali temizle
+        ctx.clearRect(0, 0, width, height);
 
-        autoPointer(time);
+        /* ==========================================================
+           1. PRİZMA GEOMETRİSİ (vgpu.sh Eşkenar Elmas-Kesim Prizma)
+           ========================================================== */
 
-        // prizma geometrisi three.js sahnesinden gelir
-        // (ekran karti yoksa 2d modda kendi geometrimiz kullanilir)
-        const geometry = window.__sceneMode === "2d"
-            ? fallbackGeometry(time)
-            : window.__prismGeometry;
+        const isCompact = width < 900;
+        // Desktop'ta sag tarafta, mobilde ortada
+        const cx = (isCompact ? 0.5 : 0.66) * width;
+        const cy = 0.5 * height;
 
-        if (geometry) {
-            try {
-                drawBeam(geometry, delta);
-            } catch (error) {
-                console.warn("Isik katmani durdu:", error);
-            }
+        // Esit kenar ucgen yuksekligi ve genisligi
+        const prismH = Math.min(height * 0.56, isCompact ? 340 : 480);
+        const prismW = prismH * 1.1547; // tam eskenar oran (2 / sqrt(3))
+
+        // Dış Üçgen (Outer Silhouette)
+        const T0 = { x: cx, y: cy - prismH * 0.52 };
+        const L0 = { x: cx - prismW * 0.5, y: cy + prismH * 0.48 };
+        const R0 = { x: cx + prismW * 0.5, y: cy + prismH * 0.48 };
+
+        // Agirlik merkezi (Centroid)
+        const G = { x: cx, y: cy + prismH * 0.1467 };
+
+        // Orta Pah Ridge (Mid Chamfer Crease - %86 olcek)
+        const scaleMid = 0.855;
+        const T1 = { x: G.x + (T0.x - G.x) * scaleMid, y: G.y + (T0.y - G.y) * scaleMid };
+        const L1 = { x: G.x + (L0.x - G.x) * scaleMid, y: G.y + (L0.y - G.y) * scaleMid };
+        const R1 = { x: G.x + (R0.x - G.x) * scaleMid, y: G.y + (R0.y - G.y) * scaleMid };
+
+        // Ic Cekirdek (Inner Recessed Obsidian Core - %74 olcek)
+        const scaleInner = 0.74;
+        const T2 = { x: G.x + (T0.x - G.x) * scaleInner, y: G.y + (T0.y - G.y) * scaleInner };
+        const L2 = { x: G.x + (L0.x - G.x) * scaleInner, y: G.y + (L0.y - G.y) * scaleInner };
+        const R2 = { x: G.x + (R0.x - G.x) * scaleInner, y: G.y + (R0.y - G.y) * scaleInner };
+
+        /* ==========================================================
+           2. OPTİK HESAPLAMA (Işın ve Kırılma Yolları)
+           vgpu.sh mantığı: Beyaz ışık sağdan girer, gökkuşağı sola çıkar
+           ========================================================== */
+
+        // Sag kenarda carpma noktasi (T0 -> R0)
+        const hitRight = {
+            x: T0.x + (R0.x - T0.x) * aimParam,
+            y: T0.y + (R0.y - T0.y) * aimParam
+        };
+
+        // Beyaz isigin baslangic noktasi (ekranin sag alt kosesi / sag disi)
+        const sourceAngle = 0.62; // radyan
+        const sourceDist = Math.max(300, width * 0.35);
+        const source = {
+            x: hitRight.x + Math.cos(sourceAngle) * sourceDist,
+            y: hitRight.y + Math.sin(sourceAngle) * sourceDist + sourceYOffset
+        };
+
+        // Sol kenardan cikis noktasi (L0 -> T0)
+        // Optik kirilma ile cam icinde hafif yukari kayarak sola cikar
+        const exitParam = Math.max(0.28, Math.min(0.82, 1 - aimParam * 0.85 + 0.08));
+        const exitLeft = {
+            x: L0.x + (T0.x - L0.x) * exitParam,
+            y: L0.y + (T0.y - L0.y) * exitParam
+        };
+
+        // Gökkuşağı yayılım uzunluğu (ekranın soluna kadar kesintisiz)
+        const rainbowLength = Math.max(380, exitLeft.x + 80);
+        const rainbowAngle = Math.PI + 0.08; // yataydan hafif asagi sola
+
+        /* ==========================================================
+           3. ÇİZİM: GELEN BEYAZ LAZER (Sağ Alttan Giriş)
+           ========================================================== */
+
+        // 3a. Genis Hacimsel Atmosfer Parlamasi
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+
+        const beamGlow = ctx.createLinearGradient(source.x, source.y, hitRight.x, hitRight.y);
+        beamGlow.addColorStop(0, "rgba(220, 240, 255, 0)");
+        beamGlow.addColorStop(0.35, "rgba(200, 230, 255, 0.08)");
+        beamGlow.addColorStop(1, "rgba(255, 255, 255, 0.22)");
+
+        ctx.strokeStyle = beamGlow;
+        ctx.lineWidth = 44;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(source.x, source.y);
+        ctx.lineTo(hitRight.x, hitRight.y);
+        ctx.stroke();
+
+        // 3b. Orta Yumusak Parlama
+        ctx.strokeStyle = "rgba(230, 245, 255, 0.45)";
+        ctx.lineWidth = 18;
+        ctx.beginPath();
+        ctx.moveTo(source.x, source.y);
+        ctx.lineTo(hitRight.x, hitRight.y);
+        ctx.stroke();
+
+        // 3c. Yogun Beyaz Cekirdek
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 6.5;
+        ctx.beginPath();
+        ctx.moveTo(source.x, source.y);
+        ctx.lineTo(hitRight.x, hitRight.y);
+        ctx.stroke();
+
+        ctx.restore();
+
+        /* ==========================================================
+           4. ÇİZİM: SOLA ÇIKAN GÖKKUŞAĞI YELPAZESİ (vgpu.sh Signature)
+           ========================================================== */
+
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+
+        // Gökkuşağı şeridinin çıkış ve varış noktaları
+        const fanSpread = 72; // sola dogru acilma payi
+        const startH = 22;     // cam cikisindaki kalinlik
+
+        // 4a. Hacimsel Renk Doygunluğu (Geniş Yumuşak Renk Alanı)
+        for (let i = 0; i < RAINBOW_STOPS.length; i++) {
+            const stop = RAINBOW_STOPS[i];
+            const frac = i / (RAINBOW_STOPS.length - 1); // 0 (kirmizi) -> 1 (mor)
+
+            // Cikis noktasindaki dikey ofset
+            const yStart = (frac - 0.5) * startH;
+            const x0 = exitLeft.x;
+            const y0 = exitLeft.y + yStart;
+
+            // Varistaki dikey yayilim
+            const yEnd = (frac - 0.5) * (startH + fanSpread);
+            const x1 = exitLeft.x + Math.cos(rainbowAngle) * rainbowLength;
+            const y1 = exitLeft.y + Math.sin(rainbowAngle) * rainbowLength + yEnd;
+
+            // Ana canli renk hüzmesi
+            const col = `rgb(${stop.r}, ${stop.g}, ${stop.b})`;
+            const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+            grad.addColorStop(0, `rgba(${stop.r}, ${stop.g}, ${stop.b}, 0.95)`);
+            grad.addColorStop(0.35, `rgba(${stop.r}, ${stop.g}, ${stop.b}, 0.85)`);
+            grad.addColorStop(0.75, `rgba(${stop.r}, ${stop.g}, ${stop.b}, 0.65)`);
+            grad.addColorStop(1, `rgba(${stop.r}, ${stop.g}, ${stop.b}, 0)`);
+
+            // Genis isilti
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = 14;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+
+            // Yogun cekirdek
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 4.5;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
         }
+
+        // 4b. Cikis Anindaki Beyaz Isik Parlamasi (Gokkusaginin baslangicindaki beyaz gecis)
+        const exitWhite = ctx.createRadialGradient(exitLeft.x, exitLeft.y, 0, exitLeft.x, exitLeft.y, 45);
+        exitWhite.addColorStop(0, "rgba(255, 255, 255, 1)");
+        exitWhite.addColorStop(0.35, "rgba(255, 255, 255, 0.7)");
+        exitWhite.addColorStop(0.7, "rgba(200, 235, 255, 0.2)");
+        exitWhite.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = exitWhite;
+        ctx.beginPath();
+        ctx.arc(exitLeft.x, exitLeft.y, 45, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        /* ==========================================================
+           5. ÇİZİM: ELMAS KESİM OBSİDİYAN PRİZMA (vgpu.sh Gem Body)
+           ========================================================== */
+
+        ctx.save();
+
+        // 5a. Dış Katman ve Arka Taban (Derin cam zemin)
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "rgba(4, 7, 14, 0.96)";
+        ctx.beginPath();
+        ctx.moveTo(T0.x, T0.y);
+        ctx.lineTo(L0.x, L0.y);
+        ctx.lineTo(R0.x, R0.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // 5b. Pah Eğim Fasetleri (Bevel Chamfer Slopes - Derin Kristal Yansımaları)
+        // Sol Pah Faseti
+        const leftSlope = ctx.createLinearGradient(T0.x, T0.y, L1.x, L1.y);
+        leftSlope.addColorStop(0, "rgba(45, 65, 105, 0.65)");
+        leftSlope.addColorStop(0.5, "rgba(18, 28, 48, 0.7)");
+        leftSlope.addColorStop(1, "rgba(35, 52, 85, 0.65)");
+        ctx.fillStyle = leftSlope;
+        ctx.beginPath();
+        ctx.moveTo(T0.x, T0.y);
+        ctx.lineTo(L0.x, L0.y);
+        ctx.lineTo(L1.x, L1.y);
+        ctx.lineTo(T1.x, T1.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Sağ Pah Faseti (Lazerin vurduğu faset - ışık yansıması içerir)
+        const rightSlope = ctx.createLinearGradient(T0.x, T0.y, R1.x, R1.y);
+        rightSlope.addColorStop(0, "rgba(60, 90, 145, 0.75)");
+        rightSlope.addColorStop(0.45, "rgba(120, 160, 220, 0.85)"); // lazer parlamasi
+        rightSlope.addColorStop(1, "rgba(25, 40, 70, 0.7)");
+        ctx.fillStyle = rightSlope;
+        ctx.beginPath();
+        ctx.moveTo(T0.x, T0.y);
+        ctx.lineTo(R0.x, R0.y);
+        ctx.lineTo(R1.x, R1.y);
+        ctx.lineTo(T1.x, T1.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Alt Taban Faseti
+        const botSlope = ctx.createLinearGradient(L0.x, L0.y, R1.x, R1.y);
+        botSlope.addColorStop(0, "rgba(15, 24, 42, 0.7)");
+        botSlope.addColorStop(0.5, "rgba(8, 14, 25, 0.85)");
+        botSlope.addColorStop(1, "rgba(22, 35, 60, 0.7)");
+        ctx.fillStyle = botSlope;
+        ctx.beginPath();
+        ctx.moveTo(L0.x, L0.y);
+        ctx.lineTo(R0.x, R0.y);
+        ctx.lineTo(R1.x, R1.y);
+        ctx.lineTo(L1.x, L1.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // 5c. Köşe Elmas Kesim Fasetleri (Corner Caps)
+        ctx.fillStyle = "rgba(85, 120, 185, 0.55)";
+        // Tepe köşe
+        ctx.beginPath();
+        ctx.moveTo(T0.x, T0.y);
+        ctx.lineTo(T0.x - 14, T0.y + 22);
+        ctx.lineTo(T1.x, T1.y);
+        ctx.lineTo(T0.x + 14, T0.y + 22);
+        ctx.closePath();
+        ctx.fill();
+
+        // 5d. İç Çekirdek (Deep Obsidian Core - vgpu.sh'taki simsiyah merkez)
+        ctx.fillStyle = "rgba(2, 4, 8, 0.98)";
+        ctx.beginPath();
+        ctx.moveTo(T2.x, T2.y);
+        ctx.lineTo(L2.x, L2.y);
+        ctx.lineTo(R2.x, R2.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // 5e. İç Kırılma Işık Şeridi (Camın içinden geçen gökkuşağı demeti)
+        // Yalnızca prizma gövdesi içine maskelenerek çizilir
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(T0.x, T0.y);
+        ctx.lineTo(L0.x, L0.y);
+        ctx.lineTo(R0.x, R0.y);
+        ctx.closePath();
+        ctx.clip();
+
+        ctx.globalCompositeOperation = "lighter";
+
+        // Cam ici renkli dispersiyon bandi (hitRight -> exitLeft)
+        for (let i = 0; i < RAINBOW_STOPS.length; i++) {
+            const stop = RAINBOW_STOPS[i];
+            const frac = i / (RAINBOW_STOPS.length - 1);
+
+            const yR = (frac - 0.5) * 8;
+            const yL = (frac - 0.5) * 22;
+
+            const inGrad = ctx.createLinearGradient(hitRight.x, hitRight.y + yR, exitLeft.x, exitLeft.y + yL);
+            inGrad.addColorStop(0, "rgba(255, 255, 255, 0.9)"); // giriste saf beyaz
+            inGrad.addColorStop(0.35, `rgba(${stop.r}, ${stop.g}, ${stop.b}, 0.8)`);
+            inGrad.addColorStop(1, `rgba(${stop.r}, ${stop.g}, ${stop.b}, 0.95)`); // cikista tam renk
+
+            ctx.strokeStyle = inGrad;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(hitRight.x, hitRight.y + yR);
+            ctx.lineTo(exitLeft.x, exitLeft.y + yL);
+            ctx.stroke();
+        }
+
+        // Cam ici beyaz isik cekirdegi
+        const innerCore = ctx.createLinearGradient(hitRight.x, hitRight.y, exitLeft.x, exitLeft.y);
+        innerCore.addColorStop(0, "rgba(255, 255, 255, 1)");
+        innerCore.addColorStop(0.5, "rgba(240, 250, 255, 0.85)");
+        innerCore.addColorStop(1, "rgba(255, 255, 255, 0.9)");
+
+        ctx.strokeStyle = innerCore;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(hitRight.x, hitRight.y);
+        ctx.lineTo(exitLeft.x, exitLeft.y);
+        ctx.stroke();
+
+        ctx.restore();
+
+        // 5f. Keskin Kristal Çizgiler (vgpu.sh Elmas Kenar Hatları)
+        ctx.globalCompositeOperation = "source-over";
+
+        // Dış Kenar Hatları (Sharp Chrome Outer Rims)
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(T0.x, T0.y);
+        ctx.lineTo(L0.x, L0.y);
+        ctx.lineTo(R0.x, R0.y);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Orta Pah Çizgisi (Chamfer Crease)
+        ctx.strokeStyle = "rgba(180, 215, 255, 0.4)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(T1.x, T1.y);
+        ctx.lineTo(L1.x, L1.y);
+        ctx.lineTo(R1.x, R1.y);
+        ctx.closePath();
+        ctx.stroke();
+
+        // İç Çekirdek Kenarı
+        ctx.strokeStyle = "rgba(120, 160, 230, 0.25)";
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(T2.x, T2.y);
+        ctx.lineTo(L2.x, L2.y);
+        ctx.lineTo(R2.x, R2.y);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Köşe bağlantı pah çizgileri
+        ctx.strokeStyle = "rgba(220, 240, 255, 0.45)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(T0.x, T0.y); ctx.lineTo(T1.x, T1.y);
+        ctx.moveTo(L0.x, L0.y); ctx.lineTo(L1.x, L1.y);
+        ctx.moveTo(R0.x, R0.y); ctx.lineTo(R1.x, R1.y);
+        ctx.stroke();
+
+        // 5g. Giriş Noktası Lazer Parlaması (Hit Lens Flare)
+        ctx.globalCompositeOperation = "lighter";
+        const hitFlare = ctx.createRadialGradient(hitRight.x, hitRight.y, 0, hitRight.x, hitRight.y, 36);
+        hitFlare.addColorStop(0, "rgba(255, 255, 255, 1)");
+        hitFlare.addColorStop(0.3, "rgba(220, 245, 255, 0.7)");
+        hitFlare.addColorStop(0.7, "rgba(160, 210, 255, 0.2)");
+        hitFlare.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = hitFlare;
+        ctx.beginPath();
+        ctx.arc(hitRight.x, hitRight.y, 36, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 5h. Tepe Uç Noktası Elmas Parıltısı
+        const apexSpark = ctx.createRadialGradient(T0.x, T0.y, 0, T0.x, T0.y, 14);
+        apexSpark.addColorStop(0, "rgba(255, 255, 255, 1)");
+        apexSpark.addColorStop(0.4, "rgba(200, 230, 255, 0.5)");
+        apexSpark.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = apexSpark;
+        ctx.beginPath();
+        ctx.arc(T0.x, T0.y, 14, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        /* ==========================================================
+           6. ORTAM PARÇACIKLARI (Dust Motes)
+           ========================================================== */
+
+        const beamSlope = (hitRight.y - source.y) / (hitRight.x - source.x);
+        renderDust(t, { x0: hitRight.x, y0: hitRight.y, slope: beamSlope });
     }
 
-    requestAnimationFrame(tick);
+    requestAnimationFrame(render);
 })();

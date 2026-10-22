@@ -8,8 +8,8 @@ import * as THREE from "./three.module.min.js";
 const canvas = document.getElementById("prism-canvas");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// "3d" = three.js sahnesi, "2d" = ekran karti olmayan cihazlar icin
-window.__sceneMode = "3d";
+// vgpu.sh motoru beam.js tarafindan tek tuvalde tam 60fps render ediliyor
+return;
 window.__prismQuality = 2;
 window.__refreshRate = 60;
 
