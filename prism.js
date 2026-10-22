@@ -71,8 +71,8 @@ function detectDeviceTier() {
     const memory = navigator.deviceMemory || 4;
     const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
 
-    if (mobile || cores <= 4 || memory <= 4) return 1;
-    if (cores <= 8 && memory <= 8) return 1;
+    if (mobile || cores <= 2 || memory <= 2) return 0;
+    if (cores <= 4 || memory <= 4) return 1;
     return 2;
 }
 
@@ -221,7 +221,7 @@ function initPrism(canvas, still, tier) {
     const glass = new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
         metalness: 0,
-        roughness: 0.04,
+        roughness: 0.08,
         transmission: 1,
         thickness: 1.55,
         ior: 1.52,
@@ -232,11 +232,11 @@ function initPrism(canvas, still, tier) {
         iridescenceIOR: 1.35,
         iridescenceThicknessRange: [100, 680],
         clearcoat: 1,
-        clearcoatRoughness: 0.035,
-        envMapIntensity: 2.1,
+        clearcoatRoughness: 0.07,
+        envMapIntensity: 1.5,
         transparent: true,
         opacity: 1,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
         depthWrite: false
     });
 
@@ -283,12 +283,12 @@ function initPrism(canvas, still, tier) {
                 varying vec3 vLocal;
 
                 void main() {
-                    float fresnel = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.6);
+                    float fresnel = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 0.0, 1.0), 3.0);
 
                     vec3 tint = 0.62 + 0.38 * cos(6.28318 * (vec3(0.0, 0.33, 0.66) + vLocal.y * 0.35 + vLocal.x * 0.2));
                     vec3 color = mix(vec3(1.0), tint, 0.42);
 
-                    gl_FragColor = vec4(color, fresnel * 0.42);
+                    gl_FragColor = vec4(color, fresnel * 0.26);
                 }
             `
         })
@@ -343,22 +343,22 @@ function initPrism(canvas, still, tier) {
 
     /* ---------- lights ---------- */
 
-    scene.environmentIntensity = 1.2;
-    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    scene.environmentIntensity = 1.0;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.45));
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 3.6);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
     keyLight.position.set(-3, 4.5, 5);
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x8fb4ff, 1.7);
+    const fillLight = new THREE.DirectionalLight(0x8fb4ff, 1.4);
     fillLight.position.set(4, -1.5, 3);
     scene.add(fillLight);
 
-    const rimLight = new THREE.PointLight(0xff3b64, 24, 14, 2);
+    const rimLight = new THREE.PointLight(0xff3b64, 18, 14, 2);
     rimLight.position.set(-2.6, -0.8, 2.2);
     scene.add(rimLight);
 
-    const coolLight = new THREE.PointLight(0x4f7dff, 18, 14, 2);
+    const coolLight = new THREE.PointLight(0x4f7dff, 14, 14, 2);
     coolLight.position.set(3.2, 1.4, 1.8);
     scene.add(coolLight);
 
