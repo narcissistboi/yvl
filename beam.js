@@ -36,6 +36,14 @@
         fade: 1             // yansima siddeti (yumusak gecis)
     };
 
+    // isik cikis noktasini ve acisini yumusatma durumu (titreme / flash onleyici)
+    const smoothExit = {
+        x: 0,
+        y: 0,
+        angle: 0,
+        initialized: false
+    };
+
     const toggles = { beam: true, reflection: true, caustic: true };
     window.__beam = {
         toggles,
@@ -86,6 +94,7 @@
         canvas.style.width = width + "px";
         canvas.style.height = height + "px";
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        smoothExit.initialized = false;
     }
 
     resize();
@@ -340,36 +349,61 @@
             || { x: dir0.x, y: dir0.y };
 
         // cam içindeki yolun çıkış noktası
-        let exit = null;
-        let exitEdge = null;
+        // Işık DAİMA karşı sağ yüzden (T -> R) çıkar.
+        // Köşelerdeki tekillik ve alt kenarla (L -> R) kesişim çakışması
+        // ışığın ani yön değiştirmesine (strobe / flash titremesi) neden olur.
+        // Bu yüzden sağ kenar kesişimi esas alınır ve u değeri [0.06, 0.94] arasına kenetlenir.
+        const ex = R.x - T.x;
+        const ey = R.y - T.y;
+        const denom = inside.x * ey - inside.y * ex;
 
-        const hitRight = raySegment(aim.x, aim.y, inside.x, inside.y, T.x, T.y, R.x, R.y);
-        const hitBottom = raySegment(aim.x, aim.y, inside.x, inside.y, L.x, L.y, R.x, R.y);
-
-        if (hitRight && hitBottom) {
-            exit = hitRight.t <= hitBottom.t ? hitRight : hitBottom;
-            exitEdge = hitRight.t <= hitBottom.t ? "right" : "bottom";
-        } else if (hitRight) {
-            exit = hitRight;
-            exitEdge = "right";
-        } else if (hitBottom) {
-            exit = hitBottom;
-            exitEdge = "bottom";
+        let rawExit = null;
+        if (Math.abs(denom) > 1e-6) {
+            const t = ((T.x - aim.x) * ey - (T.y - aim.y) * ex) / denom;
+            const u = ((T.x - aim.x) * inside.y - (T.y - aim.y) * inside.x) / denom;
+            if (t > 0) {
+                const clampedU = clamp(u, 0.06, 0.94);
+                rawExit = {
+                    x: T.x + ex * clampedU,
+                    y: T.y + ey * clampedU
+                };
+            }
         }
 
-        if (!exit) {
-            exit = { x: mix(aim.x, R.x, 0.5), y: mix(aim.y, R.y, 0.5) };
-            exitEdge = "right";
+        if (!rawExit) {
+            rawExit = { x: mix(T.x, R.x, 0.5), y: mix(T.y, R.y, 0.5) };
         }
 
-        const nExit = exitEdge === "right"
-            ? outwardNormal(T.x, T.y, R.x, R.y, L.x, L.y)
-            : outwardNormal(L.x, L.y, R.x, R.y, T.x, T.y);
-
+        const nExit = outwardNormal(T.x, T.y, R.x, R.y, L.x, L.y);
         const nAvg = refractiveIndex(550);
         const baseOut = refract(inside.x, inside.y, -nExit.x, -nExit.y, GLASS_IOR / nAvg)
-            || { x: inside.x, y: inside.y };
-        const baseAngle = Math.atan2(baseOut.y, baseOut.x);
+            || { x: Math.max(0.2, inside.x), y: inside.y };
+        let rawBaseAngle = Math.atan2(baseOut.y, baseOut.x);
+
+        // Işığın sağa doğru yayılması garanti edilir
+        if (Math.cos(rawBaseAngle) < 0.2) {
+            rawBaseAngle = 0.12;
+        }
+
+        // Işığın titremesini ve flaş yapmasını önleyen yumuşatma filtresi
+        if (!smoothExit.initialized) {
+            smoothExit.x = rawExit.x;
+            smoothExit.y = rawExit.y;
+            smoothExit.angle = rawBaseAngle;
+            smoothExit.initialized = true;
+        } else {
+            const exitEase = 1 - Math.exp(-(delta || 16) * 0.018);
+            smoothExit.x += (rawExit.x - smoothExit.x) * exitEase;
+            smoothExit.y += (rawExit.y - smoothExit.y) * exitEase;
+
+            let dAngle = rawBaseAngle - smoothExit.angle;
+            while (dAngle > Math.PI) dAngle -= Math.PI * 2;
+            while (dAngle < -Math.PI) dAngle += Math.PI * 2;
+            smoothExit.angle += dAngle * exitEase;
+        }
+
+        const exit = { x: smoothExit.x, y: smoothExit.y };
+        const baseAngle = smoothExit.angle;
 
         // yelpaze ekrandan tasmasin
         const room = Math.max(140, width - exit.x - 16);
@@ -524,12 +558,11 @@
             const d3 = sign(px, py, R.x, R.y, L.x, L.y);
             const inside = (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
 
-            // en yakin nokta: imlec camin icindeyse imlecin kendisi
-            let best = { x: px, y: py };
-            let bestDist = 0;
+            // en yakin kenara olan mesafe
+            let bestDist = inside ? 0 : Infinity;
+            let bestEdgePoint = { x: px, y: py };
 
             if (!inside) {
-                bestDist = Infinity;
                 const edges = [[L, T], [T, R], [R, L]];
 
                 for (const [a, b] of edges) {
@@ -542,34 +575,27 @@
                     const dist = Math.hypot(px - qx, py - qy);
                     if (dist < bestDist) {
                         bestDist = dist;
-                        best = { x: qx, y: qy };
+                        bestEdgePoint = { x: qx, y: qy };
                     }
                 }
             }
 
-            const near = 1 - smoothstep(prismH * 0.2, prismH * 1.7, bestDist);
+            const near = 1 - smoothstep(0, prismH * 1.4, bestDist);
             const strength = near * pointer.fade;
 
             if (strength > 0.01) {
-                // parlama imlecin tam altinda durur
-                const gx = inside ? px : mix(best.x, prismCx, 0.3);
-                const gy = inside ? py : mix(best.y, prismCy, 0.3);
+                // Parlama imlecin tam altinda yumusakca durur (ziplama ve titreme yapmaz)
+                const pull = inside ? 0 : Math.min(0.22, bestDist / (prismH * 1.5));
+                const gx = mix(px, bestEdgePoint.x, pull);
+                const gy = mix(py, bestEdgePoint.y, pull);
 
                 if (lite) {
                     // yazilim render: tek kucuk leke
-                    softBlob(gx, gy, prismH * 0.34, [0.9, 0.93, 1], 0.4 * strength);
+                    softBlob(gx, gy, prismH * 0.34, [0.9, 0.93, 1], 0.35 * strength);
                 } else {
-                    softBlob(gx, gy, prismH * 0.75, [0.84, 0.89, 1], 0.34 * strength);
-                    softBlob(gx, gy, prismH * 0.2, [1, 1, 1], 0.42 * strength);
+                    softBlob(gx, gy, prismH * 0.72, [0.84, 0.89, 1], 0.3 * strength);
+                    softBlob(gx, gy, prismH * 0.22, [1, 1, 1], 0.38 * strength);
                 }
-
-                // kenarda kısa parlama
-                ctx.strokeStyle = `rgba(255,255,255,${0.4 * strength})`;
-                ctx.lineWidth = 1.6;
-                ctx.beginPath();
-                ctx.moveTo(best.x, best.y);
-                ctx.lineTo(mix(best.x, prismCx, 0.14), mix(best.y, prismCy, 0.14));
-                ctx.stroke();
             }
         }
 

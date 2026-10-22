@@ -496,8 +496,8 @@ function initPrism(canvas, still, tier) {
     // 2 = guclu cihaz (transmission + iridescence), 1 = orta, 0 = zayif
     const qualityPresets = {
         2: { pixelRatio: () => Math.min(deviceRatio, 1.25), transmission: 1, scale: 0.5, iridescence: 1, opacity: 1 },
-        1: { pixelRatio: () => 1, transmission: 0, scale: 0.25, iridescence: 0.5, opacity: 0.46 },
-        0: { pixelRatio: () => 0.75, transmission: 0, scale: 0.25, iridescence: 0, opacity: 0.58 }
+        1: { pixelRatio: () => 1, transmission: 1, scale: 0.35, iridescence: 0.5, opacity: 1 },
+        0: { pixelRatio: () => 0.8, transmission: 1, scale: 0.25, iridescence: 0, opacity: 1 }
     };
 
     const quality = {
@@ -514,27 +514,24 @@ function initPrism(canvas, still, tier) {
         const preset = qualityPresets[level];
         renderer.setPixelRatio(preset.pixelRatio());
         renderer.transmissionResolutionScale = preset.scale;
-        glass.transmission = preset.transmission;
-        glass.opacity = preset.opacity;
         glass.iridescence = preset.iridescence;
-        glass.needsUpdate = true;
 
         window.__prismQuality = level;
-        layout();
     }
 
-    function monitorPerformance(delta) {
-        quality.samples++;
-        if (delta > 28) quality.slow++;
+    let warmupFrames = 45;
 
-        // ilk kareler cok yavassa beklemeden 2d moda gec
-        if (quality.samples === 5 && quality.slow >= 4) {
-            switchTo2D();
+    function monitorPerformance(delta) {
+        if (warmupFrames > 0) {
+            warmupFrames--;
             return;
         }
 
-        // 20 kare olmadan karar verme: tek tek takilmalar yaniltmasin
-        if (quality.samples < 20) return;
+        quality.samples++;
+        if (delta > 32) quality.slow++;
+
+        // 30 kare olmadan karar verme: tek tek takilmalar yaniltmasin
+        if (quality.samples < 30) return;
 
         const slowRatio = quality.slow / quality.samples;
         quality.samples = 0;
@@ -542,10 +539,10 @@ function initPrism(canvas, still, tier) {
 
         window.__prismQuality = quality.level;
 
-        // karelerin yarisi+ yavassa kaliteyi dusur (asla yukseltmiyoruz)
-        if (slowRatio > 0.5 && quality.level > 0) {
+        // karelerin belirgin cogunlugu yavassa kaliteyi kademeli dusur
+        if (slowRatio > 0.6 && quality.level > 0) {
             applyQuality(quality.level - 1);
-        } else if (slowRatio > 0.7 && quality.level === 0) {
+        } else if (slowRatio > 0.85 && quality.level === 0) {
             // en dusuk seviye de yetmiyor: ekran kartini birak, 2d moda gec
             switchTo2D();
         }
