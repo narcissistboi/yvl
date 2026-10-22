@@ -1,669 +1,668 @@
 /* ==========================================================
-   YOUNG VAMP LIFE — vgpu.sh 1:1 Obsidian Glass 3D Prism Engine
-   Rounded Tetrahedron · Analytic Studio Reflections · Volumetric Laser
-   Alan Zucconi Spectral Rainbow · 3D Lens Flare · Space Dust Motes
-   Fluid 60 FPS with or without Hardware Acceleration
+   yvl — animated glass prism
+   inspired by the vgpu.sh hero scene
    ========================================================== */
 
 import * as THREE from "./three.module.min.js";
 
-(function () {
-    "use strict";
+const canvas = document.getElementById("prism-canvas");
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const canvas = document.getElementById("prism-canvas");
-    if (!canvas) return;
+// "3d" = three.js sahnesi, "2d" = ekran karti olmayan cihazlar icin
+window.__sceneMode = "3d";
+window.__prismQuality = 2;
+window.__refreshRate = 60;
 
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+/* ---------- ekran yenileme hizini olc ---------- */
+// 60 / 120 / 144 / 180 Hz ekranlarda animasyon ekranin hizinda olmali
+function detectRefreshRate() {
+    return new Promise((resolve) => {
+        const samples = [];
+        let last = 0;
 
-    /* ==========================================================
-       1. ÜÇ BOYUTLU YUVARLATILMIŞ TETRAHEDRON GEOMETRİSİ (vgpu.sh)
-       4 düz yüzey, 6 silindirik pah (fillet) ve 4 küresel köşe kapağı
-       ========================================================== */
+        function tick(now) {
+            if (last) samples.push(now - last);
+            last = now;
 
-    function createRoundedTetrahedron(edge, radius, segments = 10) {
-        const height = edge * Math.sqrt(2 / 3);
-        const inradius = height / 4;
-        const baseRadius = edge / Math.sqrt(3);
+            if (samples.length < 24) {
+                requestAnimationFrame(tick);
+                return;
+            }
 
-        const corners = [
-            [0, 0, height - inradius],
-            ...[90, 210, 330].map((deg) => {
-                const a = (deg * Math.PI) / 180;
-                return [Math.cos(a) * baseRadius, Math.sin(a) * baseRadius, -inradius];
-            })
-        ];
-
-        const vecNorm = (v) => {
-            const l = Math.hypot(v[0], v[1], v[2]);
-            return l > 0 ? [v[0] / l, v[1] / l, v[2] / l] : [0, 0, 0];
-        };
-        const vecScale = (v, s) => [v[0] * s, v[1] * s, v[2] * s];
-        const vecAdd = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-        const vecSub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-        const vecDot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-        const vecCross = (a, b) => [
-            a[1] * b[2] - a[2] * b[1],
-            a[2] * b[0] - a[0] * b[2],
-            a[0] * b[1] - a[1] * b[0]
-        ];
-
-        const faces = corners.map((c) => vecScale(vecNorm(c), -1));
-        const centres = corners.map((c) => vecScale(c, (inradius - radius) / inradius));
-
-        const vertices = [];
-        const normals = [];
-        const indices = [];
-
-        function addVertex(centre, normal) {
-            vertices.push(...vecAdd(centre, vecScale(normal, radius)));
-            normals.push(...normal);
-            return vertices.length / 3 - 1;
+            samples.sort((a, b) => a - b);
+            const median = samples[Math.floor(samples.length / 2)];
+            const hz = Math.round(1000 / median);
+            resolve(Math.max(30, Math.min(240, hz)));
         }
 
-        function addTriangle(a, b, d) {
-            const vA = [vertices[a * 3], vertices[a * 3 + 1], vertices[a * 3 + 2]];
-            const vB = [vertices[b * 3], vertices[b * 3 + 1], vertices[b * 3 + 2]];
-            const vD = [vertices[d * 3], vertices[d * 3 + 1], vertices[d * 3 + 2]];
-            const facing = vecCross(vecSub(vB, vA), vecSub(vD, vA));
-            const outward = [
-                normals[a * 3] + normals[b * 3] + normals[d * 3],
-                normals[a * 3 + 1] + normals[b * 3 + 1] + normals[d * 3 + 1],
-                normals[a * 3 + 2] + normals[b * 3 + 2] + normals[d * 3 + 2]
-            ];
-            if (vecDot(facing, outward) >= 0) {
-                indices.push(a, b, d);
-            } else {
-                indices.push(a, d, b);
-            }
-        }
+        requestAnimationFrame(tick);
+    });
+}
 
-        function blend(directions, weights) {
-            let s = [0, 0, 0];
-            for (let i = 0; i < directions.length; i++) {
-                s = vecAdd(s, vecScale(directions[i], weights[i]));
-            }
-            return vecNorm(s);
-        }
-
-        function others(...skip) {
-            return [0, 1, 2, 3].filter((i) => !skip.includes(i));
-        }
-
-        // Düz Yüzeyler (Flat Faces)
-        faces.forEach((normal, face) => {
-            const [a, b, d] = others(face).map((i) => addVertex(centres[i], normal));
-            addTriangle(a, b, d);
-        });
-
-        // Silindirik Pahlar (Bevel Rails)
-        const pairs = [];
-        for (let a = 0; a < 4; a++) {
-            for (let b = a + 1; b < 4; b++) pairs.push([a, b]);
-        }
-
-        pairs.forEach(([k, l]) => {
-            const [i, j] = others(k, l);
-            const rails = [];
-            for (let t = 0; t <= segments; t++) {
-                const normal = blend([faces[k], faces[l]], [segments - t, t]);
-                rails.push([addVertex(centres[i], normal), addVertex(centres[j], normal)]);
-            }
-            for (let t = 0; t < segments; t++) {
-                const [pA, pB] = rails[t];
-                const [nA, nB] = rails[t + 1];
-                addTriangle(pA, pB, nB);
-                addTriangle(pA, nB, nA);
-            }
-        });
-
-        // Küresel Köşe Kapakları (Spherical Corner Caps)
-        centres.forEach((centre, corner) => {
-            const around = others(corner).map((face) => faces[face]);
-            const grid = [];
-            for (let u = 0; u <= segments; u++) {
-                const row = [];
-                for (let v = 0; v <= segments - u; v++) {
-                    const w = segments - u - v;
-                    row.push(addVertex(centre, blend(around, [w, u, v])));
-                }
-                grid.push(row);
-            }
-            for (let u = 0; u < segments; u++) {
-                for (let v = 0; v < segments - u; v++) {
-                    addTriangle(grid[u][v], grid[u + 1][v], grid[u][v + 1]);
-                    if (u + v + 1 < segments) {
-                        addTriangle(grid[u + 1][v], grid[u + 1][v + 1], grid[u][v + 1]);
-                    }
-                }
-            }
-        });
-
-        const geom = new THREE.BufferGeometry();
-        geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(vertices), 3));
-        geom.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(normals), 3));
-        geom.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
-        return geom;
+/* ---------- cihaz yetenegini olc ---------- */
+// 2 = guclu, 1 = orta, 0 = zayif, -1 = yazilim renderer (2d mod)
+function detectDeviceTier() {
+    // veri tasarrufu / pil modu
+    const connection = navigator.connection;
+    if (connection && (connection.saveData || /2g/.test(connection.effectiveType || ""))) {
+        return 0;
     }
 
-    /* ==========================================================
-       2. THREE.JS SAHNE, KAMERA VE RENDERER KURULUMU
-       vgpu.sh gibi Orthographic kamera ile tam optik simetri
-       ========================================================== */
+    // yazilim renderer (swiftshader / llvmpipe) -> ekran karti yok
+    try {
+        const probe = document.createElement("canvas");
+        const gl = probe.getContext("webgl2") || probe.getContext("webgl");
+        if (!gl) return -1;
+
+        const info = gl.getExtension("WEBGL_debug_renderer_info");
+        const renderer = String(
+            info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)
+        );
+
+        // donanim hizlandirma kapaliyken chrome swiftshader kullanir
+        if (/swiftshader|llvmpipe|softwarerasterizer|software|basic render|mesa offscreen|angle \(software/i.test(renderer)) {
+            return -1;
+        }
+    } catch (error) {
+        /* tarayici desteklemiyorsa varsayilana devam */
+    }
+
+    const cores = navigator.hardwareConcurrency || 4;
+    const memory = navigator.deviceMemory || 4;
+    const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    if (mobile || cores <= 4 || memory <= 4) return 1;
+    if (cores <= 8 && memory <= 8) return 1;
+    return 2;
+}
+
+/* ---------- lite mod ---------- */
+// yazilim render / zayif cihaz: 2d katman da sadelestirilir
+function enableLiteMode() {
+    window.__liteMode = true;
+    document.documentElement.classList.add("lite");
+}
+
+if (canvas) {
+    const tier = detectDeviceTier();
+
+    if (tier < 0) {
+        // ekran karti yok: 2d mod, webgl hic denenmez
+        window.__sceneMode = "2d";
+        canvas.style.display = "none";
+        enableLiteMode();
+    } else {
+        if (tier === 0) enableLiteMode();
+
+        try {
+            initPrism(canvas, reduceMotion, tier);
+        } catch (error) {
+            console.warn("Prism background disabled:", error);
+            canvas.style.display = "none";
+            window.__sceneMode = "2d";
+            enableLiteMode();
+        }
+    }
+
+    detectRefreshRate().then((hz) => {
+        window.__refreshRate = hz;
+    });
+}
+
+function initPrism(canvas, still, tier) {
+    const deviceRatio = window.devicePixelRatio || 1;
 
     const renderer = new THREE.WebGLRenderer({
         canvas,
-        antialias: true,
+        // yuksek cozunurluklu ekranlarda MSAA pahali; kapatiyoruz
+        antialias: deviceRatio < 1.5,
         alpha: false,
         powerPreference: "high-performance"
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+    renderer.setPixelRatio(Math.min(deviceRatio, 1.25));
     renderer.setClearColor(0x000000, 1);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    // transmission hedefi kucuk tutulur (her karede sahne yeniden isleniyor)
+    renderer.transmissionResolutionScale = 0.5;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
+    scene.fog = new THREE.FogExp2(0x000000, 0.045);
+    scene.environment = createStudioEnvironment(renderer);
 
-    let width = window.innerWidth;
-    let height = window.innerHeight;
+    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+    camera.position.set(0, 0.05, 7.3);
 
-    const ZOOM_BASE = 80;
-    let aspect = width / height;
-    const camera = new THREE.OrthographicCamera(
-        -aspect * (width / (2 * ZOOM_BASE)),
-        aspect * (width / (2 * ZOOM_BASE)),
-        height / (2 * ZOOM_BASE),
-        -height / (2 * ZOOM_BASE),
-        0.1,
-        1000
-    );
-    camera.position.set(0, 0, 50);
-    camera.lookAt(0, 0, 0);
+    /* ---------- glass prism ---------- */
 
-    /* ==========================================================
-       3. OBSİDİYAN CAM SHADER'I (vgpu.sh Analitik Stüdyo Yansıması)
-       Krom yüzey vurguları, Schlick Fresnel, tek geçişli tam 60 FPS
-       ========================================================== */
+    const prismRig = new THREE.Group();
+    scene.add(prismRig);
 
-    const glassMaterial = new THREE.ShaderMaterial({
-        transparent: false,
-        uniforms: {
-            uLightPos: { value: new THREE.Vector3(4.5, -2.2, 2.0) },
-            uLightIntensity: { value: 2.2 },
-            uTime: { value: 0 }
-        },
-        vertexShader: /* glsl */ `
-            varying vec3 vNormal;
-            varying vec3 vWorldPos;
-            varying vec3 vViewPos;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 1.92);
+    shape.lineTo(-0.99, -1.16);
+    shape.lineTo(0.99, -1.16);
+    shape.closePath();
 
-            void main() {
-                vNormal = normalize(normalMatrix * normal);
-                vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                vWorldPos = worldPos.xyz;
-                vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-                vViewPos = -mvPos.xyz;
-                gl_Position = projectionMatrix * mvPos;
-            }
-        `,
-        fragmentShader: /* glsl */ `
-            varying vec3 vNormal;
-            varying vec3 vWorldPos;
-            varying vec3 vViewPos;
-
-            uniform vec3 uLightPos;
-            uniform float uLightIntensity;
-            uniform float uTime;
-
-            float panelLight(vec3 dir, vec3 pCenter, vec2 pSize, float pBrightness) {
-                vec3 normal = -normalize(pCenter);
-                float facing = dot(dir, normal);
-                if (facing <= 0.0001) return 0.0;
-                float t = dot(pCenter, normal) / facing;
-                vec3 hit = dir * t - pCenter;
-                vec3 ref = abs(normal.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
-                vec3 u = normalize(cross(ref, normal));
-                vec3 v = cross(normal, u);
-                vec2 local = abs(vec2(dot(hit, u), dot(hit, v)));
-                vec2 inside = smoothstep(pSize * 0.5 + 0.25, pSize * 0.5 - 0.25, local);
-                return inside.x * inside.y * pBrightness;
-            }
-
-            vec3 domeLight(vec3 dir) {
-                float y = dir.y;
-                vec3 top = vec3(0.32, 0.35, 0.42);
-                vec3 horizon = vec3(0.06, 0.06, 0.08);
-                float a = abs(y);
-                return y > 0.0 ? mix(horizon, top, pow(a, 0.7)) : mix(horizon, vec3(0.0), pow(a, 0.5));
-            }
-
-            vec3 darkStudio(vec3 dir) {
-                float panels = panelLight(dir, vec3(-3.5, 4.0, 5.0), vec2(6.0, 4.0), 1.9)
-                             + panelLight(dir, vec3(5.0, 0.0, -3.0), vec2(1.2, 7.0), 2.8)
-                             + panelLight(dir, vec3(0.0, 6.0, 0.0), vec2(8.0, 1.2), 1.6);
-                return domeLight(dir) + vec3(panels);
-            }
-
-            void main() {
-                vec3 normal = normalize(vNormal);
-                vec3 viewDir = normalize(cameraPosition - vWorldPos);
-                float facing = clamp(dot(normal, viewDir), 0.0, 1.0);
-                vec3 incident = -viewDir;
-
-                // Schlick Fresnel (IOR = 1.62)
-                float f0 = 0.056; // pow((1.62-1)/(1.62+1), 2)
-                float fresnel = f0 + (1.0 - f0) * pow(1.0 - facing, 4.8);
-                float clearcoat = 0.04 + 0.96 * pow(1.0 - facing, 5.0);
-
-                // Analitik stüdyo yansıması (vgpu.sh softbox panels)
-                vec3 reflected = reflect(incident, normal);
-                vec3 env = darkStudio(reflected) * 2.0;
-
-                // Derin parlak obsidiyan cam çekirdeği
-                vec3 obsidian = vec3(0.015, 0.02, 0.03);
-
-                // Yüzeye çarpan lazerin aynasal (specular) parlama noktası
-                vec3 toLight = normalize(uLightPos - vWorldPos);
-                vec3 halfway = normalize(toLight + viewDir);
-                float spec = pow(max(dot(normal, halfway), 0.0), 48.0) * uLightIntensity;
-
-                // Pahlı kenar (chamfer) parlaklık konturu
-                float rim = pow(1.0 - facing, 3.2);
-                vec3 rimColor = mix(vec3(0.9, 0.95, 1.0), vec3(0.4, 0.75, 1.0), 0.25) * rim * 0.95;
-
-                vec3 color = mix(obsidian, env, fresnel) + env * clearcoat * 0.45 + vec3(spec * 0.9) + rimColor;
-                gl_FragColor = vec4(color, 1.0);
-            }
-        `
+    const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: 0.76,
+        bevelEnabled: true,
+        bevelThickness: 0.075,
+        bevelSize: 0.075,
+        bevelSegments: 4,
+        curveSegments: 1
     });
+    geometry.center();
 
-    const prismGeometry = createRoundedTetrahedron(Math.sqrt(3), 0.038, 10);
-    const prismMesh = new THREE.Mesh(prismGeometry, glassMaterial);
-    prismMesh.scale.setScalar(1.95);
+    /* ---------- 2d ışık katmanı için prizma geometrisi ---------- */
+    // ön yüzün üç köşesini sahne uzayında tutuyoruz; ışık katmanı bunları
+    // ekrana yansıtıp giriş/çıkış noktalarını buradan hesaplıyor
 
-    // vgpu.sh başlangıç duruşu: Düz üçgen yüzü dik bakar
-    prismMesh.rotation.set(0, 0, 0);
+    geometry.computeBoundingBox();
 
-    const prismGroup = new THREE.Group();
-    prismGroup.add(prismMesh);
-    scene.add(prismGroup);
+    const bounds = geometry.boundingBox;
+    const offsetX = (bounds.min.x + bounds.max.x) * 0.5;
+    const offsetY = (bounds.min.y + bounds.max.y) * 0.5;
+    const frontZ = bounds.max.z;
 
-    /* ==========================================================
-       4. GELEN HACİMSEL LAZER IŞINI (Sağ Alttan Giriş)
-       ========================================================== */
+    const frontCorners = [
+        new THREE.Vector3(0 - offsetX, 1.92 - offsetY, frontZ),
+        new THREE.Vector3(-0.99 - offsetX, -1.16 - offsetY, frontZ),
+        new THREE.Vector3(0.99 - offsetX, -1.16 - offsetY, frontZ)
+    ];
 
-    const beamGeometry = new THREE.PlaneGeometry(1, 1);
-    const beamMaterial = new THREE.ShaderMaterial({
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        uniforms: {
-            uTime: { value: 0 },
-            uIntensity: { value: 2.2 }
-        },
-        vertexShader: /* glsl */ `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: /* glsl */ `
-            varying vec2 vUv;
-            uniform float uTime;
-            uniform float uIntensity;
+    const projected = [
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+        new THREE.Vector3()
+    ];
 
-            void main() {
-                float d = abs(vUv.x - 0.5) * 2.0;
-                float core = exp(-d * d * 22.0);
-                float halo = exp(-d * d * 3.8) * 0.45;
-                float atmos = exp(-d * 1.8) * 0.14;
+    function publishFrame(time) {
+        scene.updateMatrixWorld(true);
 
-                float pulse = 0.92 + 0.08 * sin(uTime * 2.8);
-                float along = smoothstep(0.0, 0.15, vUv.y);
+        // kamera matrisleri ilk karede henuz guncel olmayabiliyor
+        camera.updateMatrixWorld();
+        camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
 
-                vec3 col = vec3(1.0) * core + vec3(0.7, 0.88, 1.0) * halo + vec3(0.5, 0.75, 1.0) * atmos;
-                float alpha = (core + halo * 0.8 + atmos * 0.5) * along * uIntensity * pulse;
-                gl_FragColor = vec4(col * alpha, alpha);
-            }
-        `
-    });
+        const frameWidth = canvas.clientWidth;
+        const frameHeight = canvas.clientHeight;
 
-    const beamMesh = new THREE.Mesh(beamGeometry, beamMaterial);
-    scene.add(beamMesh);
+        for (let i = 0; i < 3; i++) {
+            projected[i]
+                .copy(frontCorners[i])
+                .applyMatrix4(prism.matrixWorld)
+                .project(camera);
+        }
 
-    /* ==========================================================
-       5. KRİSTAL ODAK LENS PARLAMASI (Glint / Star Flare)
-       ========================================================== */
-
-    const flareGeometry = new THREE.PlaneGeometry(1, 1);
-    const flareMaterial = new THREE.ShaderMaterial({
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        uniforms: {
-            uTime: { value: 0 },
-            uIntensity: { value: 2.5 }
-        },
-        vertexShader: /* glsl */ `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: /* glsl */ `
-            varying vec2 vUv;
-            uniform float uTime;
-            uniform float uIntensity;
-
-            void main() {
-                vec2 p = vUv * 2.0 - 1.0;
-                float r = length(p);
-                float core = exp(-r * r * 35.0);
-                float glow = exp(-r * 3.4) * 0.5;
-
-                // Anamorfik yatay/dikey difraksiyon çizgisi
-                float spikeH = exp(-abs(p.y) * 45.0) * exp(-abs(p.x) * 1.2) * 0.65;
-                float spikeV = exp(-abs(p.x) * 45.0) * exp(-abs(p.y) * 1.8) * 0.35;
-
-                float pulse = 0.85 + 0.15 * sin(uTime * 4.2);
-                vec3 col = vec3(1.0) * core + vec3(0.75, 0.9, 1.0) * glow + vec3(0.9, 0.95, 1.0) * (spikeH + spikeV);
-                float alpha = (core + glow + spikeH + spikeV) * uIntensity * pulse;
-                gl_FragColor = vec4(col * alpha, alpha);
-            }
-        `
-    });
-
-    const flareMesh = new THREE.Mesh(flareGeometry, flareMaterial);
-    scene.add(flareMesh);
-
-    /* ==========================================================
-       6. ALAN ZUCCONI SPEKTRAL GÖKKUŞAĞI ŞERİDİ (vgpu.sh Signature)
-       Kırılma açısıyla sol alt köşeye kesintisiz yayılan ışık şeridi
-       ========================================================== */
-
-    const rainbowGeometry = new THREE.PlaneGeometry(1, 1);
-    const rainbowMaterial = new THREE.ShaderMaterial({
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        uniforms: {
-            uTime: { value: 0 },
-            uIntensity: { value: 2.8 }
-        },
-        vertexShader: /* glsl */ `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: /* glsl */ `
-            varying vec2 vUv;
-            uniform float uTime;
-            uniform float uIntensity;
-
-            vec3 bump3y(vec3 x, vec3 yoffset) {
-                vec3 y = vec3(1.0) - x * x;
-                return clamp(y - yoffset, 0.0, 1.0);
-            }
-
-            // Alan Zucconi / CIEXYZ analitik spektral dalgaboyu formülü (400 - 700nm)
-            vec3 spectral_zucconi6(float w) {
-                float x = clamp((w - 400.0) / 300.0, 0.0, 1.0);
-                const vec3 c1 = vec3(3.54585104, 2.93225262, 2.41593945);
-                const vec3 x1 = vec3(0.69549072, 0.49228336, 0.27699880);
-                const vec3 y1 = vec3(0.02312639, 0.15225084, 0.52607955);
-                const vec3 c2 = vec3(3.90307140, 3.21182957, 3.96587128);
-                const vec3 x2 = vec3(0.11748627, 0.86755042, 0.66077860);
-                const vec3 y2 = vec3(0.84897130, 0.88445281, 0.73949448);
-                return bump3y(c1 * (x - x1), y1) + bump3y(c2 * (x - x2), y2);
-            }
-
-            void main() {
-                // vUv.x: Spektrum boyunca (0 = kırmızı, 1 = mor)
-                // vUv.y: Çıkıştan uzaklık (0 = prizma çıkışı, 1 = ekran kenarı)
-                float wavelength = mix(700.0, 400.0, vUv.x);
-                vec3 specColor = spectral_zucconi6(wavelength);
-
-                // Canlı spektral dalga ışıltısı
-                float wave = 0.92 + 0.12 * sin(uTime * 2.6 - vUv.y * 7.5);
-
-                // Hacimsel şerit kenar yumuşatması
-                float edge = smoothstep(0.0, 0.12, vUv.x) * (1.0 - smoothstep(0.88, 1.0, vUv.x));
-
-                // Uzaklık solması
-                float lengthFade = (1.0 - smoothstep(0.72, 1.0, vUv.y));
-
-                // Çıkış noktasındaki akkor beyaz kırılma parlaklığı
-                float exitWhite = exp(-vUv.y * 15.0) * 1.9;
-                vec3 col = mix(specColor * 1.45, vec3(1.0), clamp(exitWhite, 0.0, 1.0));
-
-                float alpha = edge * lengthFade * uIntensity * wave * (0.85 + exitWhite * 0.5);
-                gl_FragColor = vec4(col * alpha, alpha);
-            }
-        `
-    });
-
-    const rainbowMesh = new THREE.Mesh(rainbowGeometry, rainbowMaterial);
-    scene.add(rainbowMesh);
-
-    /* ==========================================================
-       7. UZAY TOZU PARÇACIKLARI (Dust Motes)
-       ========================================================== */
-
-    const particleCount = 55;
-    const particlePositions = new Float32Array(particleCount * 3);
-    const particleData = [];
-
-    for (let i = 0; i < particleCount; i++) {
-        particlePositions[i * 3] = (Math.random() - 0.5) * 18;
-        particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 12;
-        particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 6;
-        particleData.push({
-            speedX: (Math.random() - 0.5) * 0.003,
-            speedY: -0.001 - Math.random() * 0.003,
-            phase: Math.random() * Math.PI * 2
-        });
+        window.__prismGeometry = {
+            time,
+            width: frameWidth,
+            height: frameHeight,
+            corners: [
+                {
+                    x: (projected[0].x * 0.5 + 0.5) * frameWidth,
+                    y: (-projected[0].y * 0.5 + 0.5) * frameHeight
+                },
+                {
+                    x: (projected[1].x * 0.5 + 0.5) * frameWidth,
+                    y: (-projected[1].y * 0.5 + 0.5) * frameHeight
+                },
+                {
+                    x: (projected[2].x * 0.5 + 0.5) * frameWidth,
+                    y: (-projected[2].y * 0.5 + 0.5) * frameHeight
+                }
+            ]
+        };
     }
 
-    const particleGeometry = new THREE.BufferGeometry();
-    particleGeometry.setAttribute("position", new THREE.BufferAttribute(particlePositions, 3));
-
-    const particleMaterial = new THREE.PointsMaterial({
-        size: 0.12,
+    const glass = new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
+        metalness: 0,
+        roughness: 0.04,
+        transmission: 1,
+        thickness: 1.55,
+        ior: 1.52,
+        // dispersion acikken transmission shader'i 3 ornekli donguye giriyor
+        // (her piksel icin 3x maliyet). Gökkuşağı artık 2d isik katmaninda.
+        dispersion: 0,
+        iridescence: 1,
+        iridescenceIOR: 1.35,
+        iridescenceThicknessRange: [100, 680],
+        clearcoat: 1,
+        clearcoatRoughness: 0.035,
+        envMapIntensity: 2.1,
         transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
+        opacity: 1,
+        side: THREE.DoubleSide,
         depthWrite: false
     });
 
-    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    const prism = new THREE.Mesh(geometry, glass);
+    prism.rotation.set(-0.1, 0.28, -0.04);
+    prismRig.add(prism);
+
+    const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geometry, 40),
+        new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.22,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        })
+    );
+    edges.renderOrder = 3;
+    prism.add(edges);
+
+    const rim = new THREE.Mesh(
+        geometry,
+        new THREE.ShaderMaterial({
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            vertexShader: /* glsl */ `
+                varying vec3 vNormal;
+                varying vec3 vView;
+                varying vec3 vLocal;
+
+                void main() {
+                    vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
+                    vNormal = normalize(normalMatrix * normal);
+                    vView = normalize(-viewPosition.xyz);
+                    vLocal = position;
+                    gl_Position = projectionMatrix * viewPosition;
+                }
+            `,
+            fragmentShader: /* glsl */ `
+                varying vec3 vNormal;
+                varying vec3 vView;
+                varying vec3 vLocal;
+
+                void main() {
+                    float fresnel = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.6);
+
+                    vec3 tint = 0.62 + 0.38 * cos(6.28318 * (vec3(0.0, 0.33, 0.66) + vLocal.y * 0.35 + vLocal.x * 0.2));
+                    vec3 color = mix(vec3(1.0), tint, 0.42);
+
+                    gl_FragColor = vec4(color, fresnel * 0.42);
+                }
+            `
+        })
+    );
+    rim.scale.setScalar(1.004);
+    rim.renderOrder = 2;
+    prism.add(rim);
+
+    /* ---------- eski sabit isin plane'i kaldirildi ---------- */
+    /* 2d isik katmani (beam.js) bu isin govdesini kendisi cizer;
+       eski sabit rainbow plane'i ile ayni seyi cift ciziyordu. */
+
+    /* ---------- ambient details ---------- */
+
+    const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(8.5, 8.5),
+        new THREE.MeshBasicMaterial({
+            map: createGlowTexture(),
+            transparent: true,
+            opacity: 0.035,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        })
+    );
+    glow.position.set(1.4, 0, -4.2);
+    scene.add(glow);
+
+    const particleCount = 42;
+    const positions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 9;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 5;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 4;
+    }
+
+    const particleGeometry = new THREE.BufferGeometry();
+    particleGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+
+    const particles = new THREE.Points(
+        particleGeometry,
+        new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.017,
+            transparent: true,
+            opacity: 0.3,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
+        })
+    );
     scene.add(particles);
 
-    /* ==========================================================
-       8. ETKİLEŞİM VE GİRDİ KONTROLLERİ (vgpu.sh Drag / Wheel / Aim)
-       ========================================================== */
+    /* ---------- lights ---------- */
 
-    const pointer = {
-        x: 0.85,
-        y: 0.78,
-        targetX: 0.85,
-        targetY: 0.78,
-        dragging: false,
-        dragStartX: 0,
-        dragStartY: 0,
-        rotVelocityX: 0,
-        rotVelocityY: 0
+    scene.environmentIntensity = 1.2;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 3.6);
+    keyLight.position.set(-3, 4.5, 5);
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0x8fb4ff, 1.7);
+    fillLight.position.set(4, -1.5, 3);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.PointLight(0xff3b64, 24, 14, 2);
+    rimLight.position.set(-2.6, -0.8, 2.2);
+    scene.add(rimLight);
+
+    const coolLight = new THREE.PointLight(0x4f7dff, 18, 14, 2);
+    coolLight.position.set(3.2, 1.4, 1.8);
+    scene.add(coolLight);
+
+    /* ---------- response ---------- */
+
+    const state = {
+        pointerX: 0,
+        pointerY: 0,
+        targetX: 0,
+        targetY: 0,
+        scroll: 0,
+        scrollProgress: 0,
+        pointerMoved: false,
+        wheel: 0,
+        baseX: 0,
+        baseY: 0,
+        scale: 1
     };
 
-    function onPointerMove(e) {
-        if (pointer.dragging) {
-            const dx = e.clientX - pointer.dragStartX;
-            const dy = e.clientY - pointer.dragStartY;
-            pointer.dragStartX = e.clientX;
-            pointer.dragStartY = e.clientY;
-            pointer.rotVelocityY = dx * 0.006;
-            pointer.rotVelocityX = dy * 0.006;
-        } else {
-            pointer.targetX = e.clientX / window.innerWidth;
-            pointer.targetY = e.clientY / window.innerHeight;
-        }
-    }
-
-    window.addEventListener("pointerdown", (e) => {
-        pointer.dragging = true;
-        pointer.dragStartX = e.clientX;
-        pointer.dragStartY = e.clientY;
-    });
-
-    window.addEventListener("pointerup", () => {
-        pointer.dragging = false;
-    });
-
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-
-    window.addEventListener("wheel", (e) => {
-        prismMesh.rotation.z += e.deltaY * 0.001;
-    }, { passive: true });
-
-    /* ==========================================================
-       9. YENİDEN BOYUTLANDIRMA VE KAYDIRMA
-       ========================================================== */
-
-    function resize() {
-        width = window.innerWidth;
-        height = window.innerHeight;
-        renderer.setSize(width, height, false);
-
-        aspect = width / height;
-        const compact = width < 768;
-
-        const zoom = compact ? 65 : 85;
-        const halfW = width / (2 * zoom);
-        const halfH = height / (2 * zoom);
-
-        camera.left = -halfW;
-        camera.right = halfW;
-        camera.top = halfH;
-        camera.bottom = -halfH;
-        camera.updateProjectionMatrix();
-
-        // Prizma konumu: Ekran ortası (veya masaüstünde hafif sağ)
-        prismGroup.position.set(compact ? 0 : 0.65, compact ? -0.2 : -0.1, 0);
-    }
-
-    resize();
-    window.addEventListener("resize", resize, { passive: true });
+    /* ---------- kaydırma ---------- */
 
     function applyScroll() {
-        const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-        const progress = Math.min(1, (window.scrollY || 0) / max);
-        const fade = Math.max(0, Math.min(1, 1 - progress * 1.25));
-        document.documentElement.style.setProperty("--scene-fade", fade.toFixed(3));
+        // kaydırma ilerlemesi beam.js tarafindan tutulur (her iki modda da calisir)
+        const progress = window.__scrollProgress || 0;
+
+        state.scroll = window.scrollY || 0;
+        state.scrollProgress = progress;
     }
 
-    window.addEventListener("scroll", applyScroll, { passive: true });
-    applyScroll();
+    function layout() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const compact = width < 900;
 
-    /* ==========================================================
-       10. CANLI ANİMASYON DÖNGÜSÜ (60 FPS)
-       ========================================================== */
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
 
-    const clock = new THREE.Clock();
+        const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * camera.position.z;
+        const halfWidth = visibleHeight * camera.aspect * 0.5;
+        const xFraction = compact ? 0.88 : 0.66;
 
-    function animate() {
-        requestAnimationFrame(animate);
+        state.baseX = (xFraction * 2 - 1) * halfWidth;
+        state.baseY = compact ? -0.2 : 0.02;
+        state.scale = compact
+            ? Math.min(0.5, height / 1550)
+            : Math.min(1, Math.max(0.88, width / 1600));
 
-        const delta = Math.min(0.1, clock.getDelta());
-        const time = clock.getElapsedTime();
+        prismRig.position.set(state.baseX, state.baseY, 0);
+        prismRig.scale.setScalar(state.scale);
+        glow.position.set(state.baseX, state.baseY, -4.2);
+    }
 
-        // Shader uniform güncellemeleri
-        glassMaterial.uniforms.uTime.value = time;
-        beamMaterial.uniforms.uTime.value = time;
-        flareMaterial.uniforms.uTime.value = time;
-        rainbowMaterial.uniforms.uTime.value = time;
+    function updateScene(time) {
+        const progress = state.scrollProgress;
+        const scrollTurn = progress * 0.45;
 
-        // Pointer yumuşatma (inertia lerp)
-        pointer.x += (pointer.targetX - pointer.x) * 0.05;
-        pointer.y += (pointer.targetY - pointer.y) * 0.05;
+        const pointerX = still ? 0 : state.pointerX;
+        const pointerY = still ? 0 : state.pointerY;
 
-        // Prizma dönüşü ve ataleti (Inertia + Organik Salınım)
-        if (!reduceMotion) {
-            prismMesh.rotation.y += pointer.rotVelocityY;
-            prismMesh.rotation.x += pointer.rotVelocityX;
-            pointer.rotVelocityX *= 0.93;
-            pointer.rotVelocityY *= 0.93;
-
-            if (!pointer.dragging) {
-                // vgpu.sh idle drift: narin yüzen salınım
-                prismMesh.rotation.y += Math.sin(time * 0.4) * 0.0012;
-                prismMesh.rotation.x += Math.cos(time * 0.3) * 0.0008;
-            }
+        if (!still) {
+            state.wheel *= 0.94;
         }
 
-        /* ---------------- Işın Geometrisi Hesaplama ---------------- */
+        prism.rotation.y = 0.28 + Math.sin(time * 0.24) * 0.18 + pointerX * 0.26 + scrollTurn + state.wheel;
+        prism.rotation.x = -0.1 + Math.sin(time * 0.19) * 0.06 + pointerY * 0.11;
+        prism.rotation.z = -0.04 + Math.sin(time * 0.14) * 0.035;
 
-        // Prizmanın dünya konumu
-        const pPos = prismGroup.position;
+        prismRig.position.x = state.baseX + pointerX * 0.1;
+        prismRig.position.y = state.baseY
+            + Math.sin(time * 0.55) * 0.045
+            + progress * 2.1
+            - state.wheel * 0.08;
 
-        // Giriş noktası: Prizmanın sağ yüzeyinde
-        const hitX = pPos.x + 0.88;
-        const hitY = pPos.y - 0.12;
+        // kaydırma ile birlikte prizma hafifçe uzaklaşır
+        prismRig.scale.setScalar(state.scale * (1 - progress * 0.12));
 
-        // Işık kaynağı: Sağ altta fareyi takip eder
-        const srcX = pPos.x + 4.2 + (pointer.x - 0.5) * 1.8;
-        const srcY = pPos.y - 3.2 + (pointer.y - 0.5) * 1.5;
+        particles.rotation.z = Math.sin(time * 0.05) * 0.025;
+        publishFrame(time);
+    }
 
-        glassMaterial.uniforms.uLightPos.value.set(srcX, srcY, 2.0);
-
-        // Lazer huzmesini konumlandır ve yönlendir
-        const beamDx = hitX - srcX;
-        const beamDy = hitY - srcY;
-        const beamLen = Math.hypot(beamDx, beamDy);
-        const beamAngle = Math.atan2(beamDy, beamDx);
-
-        beamMesh.position.set((srcX + hitX) * 0.5, (srcY + hitY) * 0.5, 0.05);
-        beamMesh.rotation.set(0, 0, beamAngle + Math.PI / 2);
-        beamMesh.scale.set(0.65, beamLen, 1);
-
-        // Odak parlamasını (flare) giriş noktasına yerleştir
-        flareMesh.position.set(hitX, hitY, 0.1);
-        flareMesh.scale.setScalar(1.6);
-
-        // Çıkış noktası: Sol kenar
-        const exitX = pPos.x - 0.88;
-        const exitY = pPos.y + 0.08;
-
-        // Gökkuşağı yayılımı: Sol alt köşeye doğru
-        const rainbowTargetX = pPos.x - 7.5;
-        const rainbowTargetY = pPos.y - 3.4;
-
-        const rainDx = rainbowTargetX - exitX;
-        const rainDy = rainbowTargetY - exitY;
-        const rainLen = Math.hypot(rainDx, rainDy);
-        const rainAngle = Math.atan2(rainDy, rainDx);
-
-        rainbowMesh.position.set((exitX + rainbowTargetX) * 0.5, (exitY + rainbowTargetY) * 0.5, 0.05);
-        rainbowMesh.rotation.set(0, 0, rainAngle - Math.PI / 2);
-        rainbowMesh.scale.set(2.4, rainLen, 1);
-
-        /* ---------------- Toz Parçacıkları Hareketi ---------------- */
-
-        const positions = particleGeometry.attributes.position.array;
-        for (let i = 0; i < particleCount; i++) {
-            const p = particleData[i];
-            positions[i * 3] += p.speedX;
-            positions[i * 3 + 1] += p.speedY;
-
-            if (positions[i * 3 + 1] < -6) positions[i * 3 + 1] = 6;
-            if (positions[i * 3] < -9) positions[i * 3] = 9;
-            if (positions[i * 3] > 9) positions[i * 3] = -9;
-        }
-        particleGeometry.attributes.position.needsUpdate = true;
-
+    function render() {
         renderer.render(scene, camera);
     }
 
-    requestAnimationFrame(animate);
-})();
+    layout();
+    applyScroll();
+
+    // cihaz yetenegine gore baslangic kalitesi
+    if (typeof tier === "number" && tier < 2) {
+        applyQuality(tier);
+    }
+
+    if (still) {
+        updateScene(0);
+        render();
+        window.addEventListener("resize", () => {
+            layout();
+            applyScroll();
+            updateScene(0);
+            render();
+        }, { passive: true });
+        window.addEventListener("scroll", () => {
+            applyScroll();
+            updateScene(0);
+            render();
+        }, { passive: true });
+        return;
+    }
+
+    window.addEventListener("resize", () => {
+        layout();
+        applyScroll();
+    }, { passive: true });
+
+    window.addEventListener("scroll", () => {
+        applyScroll();
+    }, { passive: true });
+
+    window.addEventListener("wheel", (event) => {        state.wheel = THREE.MathUtils.clamp(state.wheel + event.deltaY * 0.0011, -0.65, 0.65);
+    }, { passive: true });
+
+    window.addEventListener("pointermove", (event) => {
+        state.targetX = (event.clientX / window.innerWidth) * 2 - 1;
+        state.targetY = (event.clientY / window.innerHeight) * 2 - 1;
+        state.pointerMoved = true;
+    }, { passive: true });
+
+    let frameId = 0;
+    let running = true;
+    const clock = new THREE.Clock();
+
+    /* ---------- uyarlanabilir kalite ---------- */
+
+    // 2 = guclu cihaz (transmission + iridescence), 1 = orta, 0 = zayif
+    const qualityPresets = {
+        2: { pixelRatio: () => Math.min(deviceRatio, 1.25), transmission: 1, scale: 0.5, iridescence: 1, opacity: 1 },
+        1: { pixelRatio: () => 1, transmission: 0, scale: 0.25, iridescence: 0.5, opacity: 0.46 },
+        0: { pixelRatio: () => 0.75, transmission: 0, scale: 0.25, iridescence: 0, opacity: 0.58 }
+    };
+
+    const quality = {
+        level: 2,
+        samples: 0,
+        slow: 0
+    };
+
+    function applyQuality(level) {
+        level = Math.max(0, Math.min(2, level));
+        if (level === quality.level) return;
+        quality.level = level;
+
+        const preset = qualityPresets[level];
+        renderer.setPixelRatio(preset.pixelRatio());
+        renderer.transmissionResolutionScale = preset.scale;
+        glass.transmission = preset.transmission;
+        glass.opacity = preset.opacity;
+        glass.iridescence = preset.iridescence;
+        glass.needsUpdate = true;
+
+        window.__prismQuality = level;
+        layout();
+    }
+
+    function monitorPerformance(delta) {
+        quality.samples++;
+        if (delta > 28) quality.slow++;
+
+        // ilk kareler cok yavassa beklemeden 2d moda gec
+        if (quality.samples === 5 && quality.slow >= 4) {
+            switchTo2D();
+            return;
+        }
+
+        // 20 kare olmadan karar verme: tek tek takilmalar yaniltmasin
+        if (quality.samples < 20) return;
+
+        const slowRatio = quality.slow / quality.samples;
+        quality.samples = 0;
+        quality.slow = 0;
+
+        window.__prismQuality = quality.level;
+
+        // karelerin yarisi+ yavassa kaliteyi dusur (asla yukseltmiyoruz)
+        if (slowRatio > 0.5 && quality.level > 0) {
+            applyQuality(quality.level - 1);
+        } else if (slowRatio > 0.7 && quality.level === 0) {
+            // en dusuk seviye de yetmiyor: ekran kartini birak, 2d moda gec
+            switchTo2D();
+        }
+    }
+
+    function switchTo2D() {
+        if (window.__sceneMode === "2d") return;
+
+        window.__sceneMode = "2d";
+        enableLiteMode();
+        running = false;
+        cancelAnimationFrame(frameId);
+        canvas.style.display = "none";
+    }
+
+    // kare siniri ekranin yenileme hizina gore (60/120/144/180Hz)
+    function frameLimit() {
+        return 1000 / (window.__refreshRate || 60);
+    }
+
+    let lastFrame = 0;
+
+    function frame(now) {
+        if (!running) return;
+        frameId = requestAnimationFrame(frame);
+
+        // sahne tamamen kaybolduysa (alt bos bolum) render etme
+        if (state.scrollProgress > 0.995 && !state.pointerMoved) {
+            lastFrame = now;
+            return;
+        }
+
+        if (now - lastFrame < frameLimit()) return;
+        const delta = lastFrame ? Math.min(100, now - lastFrame) : 16;
+        lastFrame = now;
+
+        // yumuşatma kare hızından bağımsız: her fps'te ayni his
+        const ease = 1 - Math.exp(-delta * 0.009);
+
+        state.pointerX += (state.targetX - state.pointerX) * ease;
+        state.pointerY += (state.targetY - state.pointerY) * ease;
+
+        updateScene(clock.getElapsedTime());
+        render();
+
+        monitorPerformance(delta);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            running = false;
+            cancelAnimationFrame(frameId);
+        } else {
+            running = true;
+            clock.getDelta();
+            lastFrame = 0;
+            requestAnimationFrame(frame);
+        }
+    });
+
+    requestAnimationFrame(frame);
+}
+
+/* ---------- generated textures ---------- */
+
+function createStudioEnvironment(renderer) {
+    const textureCanvas = document.createElement("canvas");
+    textureCanvas.width = 1024;
+    textureCanvas.height = 512;
+
+    const context = textureCanvas.getContext("2d");
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, textureCanvas.width, textureCanvas.height);
+
+    context.globalCompositeOperation = "lighter";
+    context.filter = "blur(28px)";
+
+    const lights = [
+        { x: 155, y: 20, width: 90, height: 472, color: "rgba(60, 100, 255, 0.5)" },
+        { x: 470, y: 10, width: 74, height: 492, color: "rgba(255, 255, 255, 0.92)" },
+        { x: 650, y: 120, width: 44, height: 272, color: "rgba(0, 255, 190, 0.24)" },
+        { x: 806, y: 40, width: 104, height: 432, color: "rgba(255, 38, 90, 0.42)" }
+    ];
+
+    for (const light of lights) {
+        context.fillStyle = light.color;
+        context.fillRect(light.x, light.y, light.width, light.height);
+    }
+
+    const texture = new THREE.CanvasTexture(textureCanvas);
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const target = pmrem.fromEquirectangular(texture);
+
+    texture.dispose();
+    pmrem.dispose();
+
+    return target.texture;
+}
+
+function createGlowTexture() {
+    const textureCanvas = document.createElement("canvas");
+    textureCanvas.width = 256;
+    textureCanvas.height = 256;
+
+    const context = textureCanvas.getContext("2d");
+    const gradient = context.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0.7)");
+    gradient.addColorStop(0.35, "rgba(170, 210, 255, 0.22)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 256, 256);
+
+    const texture = new THREE.CanvasTexture(textureCanvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+}

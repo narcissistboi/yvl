@@ -43,24 +43,41 @@ body {
     text-rendering: optimizeLegibility;
 }
 
-/* ---------- 3D Prizma Sahnesi (vgpu.sh 1:1) ---------- */
+/* ---------- 3d canvas ---------- */
 
-#prism-canvas {
+#prism-canvas,
+#beam-canvas {
     position: fixed;
     inset: 0;
-    z-index: 1;
+    z-index: 0;
+    display: block;
     width: 100%;
     height: 100%;
-    display: block;
-    background: #000000;
-    opacity: var(--scene-fade, 1);
+    background: #000;
+    opacity: 1;
+    pointer-events: none;
     transition: opacity 0.8s ease;
-    touch-action: none;
-    cursor: grab;
 }
 
-#prism-canvas:active {
-    cursor: grabbing;
+#prism-canvas {
+    z-index: 0;
+    background: #000;
+    opacity: var(--scene-fade);
+    transition: opacity 0.8s ease;
+}
+
+/* 2d isik katmani: prizmanin uzerinde, ekran modunda karisim */
+#beam-canvas {
+    z-index: 1;
+    background: transparent;
+    mix-blend-mode: screen;
+    opacity: calc(var(--scene-fade) * 0.95);
+    transition: opacity 0.8s ease;
+}
+
+/* lite mod (yazilim render / zayif cihaz): karisim modu pahali, kapatilir */
+html.lite #beam-canvas {
+    mix-blend-mode: normal;
 }
 
 /* ---------- sahne ---------- */
@@ -72,7 +89,6 @@ body {
     min-height: 100svh;
     display: flex;
     flex-direction: column;
-    pointer-events: none;
 }
 
 .stage {
@@ -80,9 +96,9 @@ body {
     z-index: 2;
     flex: 1 0 auto;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: flex-start;
-    padding: clamp(64px, 10vh, 108px) max(5vw, 32px) 24px max(8vw, 40px);
+    padding: clamp(88px, 12vh, 128px) max(5vw, 32px) 24px max(9vw, 40px);
 }
 
 /* ---------- profil ---------- */
@@ -93,8 +109,9 @@ body {
     align-items: flex-start;
     width: min(560px, 48vw);
     text-align: left;
+    /* "backwards" kaldirildi: sekme arka plandayken animasyon baslamazsa
+       yazi opacity 0'da kalip gorunmez oluyordu */
     animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
-    pointer-events: auto;
 }
 
 .name {
@@ -121,7 +138,7 @@ body {
 
 .name-link:hover {
     opacity: 0.84;
-    text-shadow: 0 0 32px rgba(255, 255, 255, 0.18);
+    text-shadow: 0 0 32px rgba(255, 255, 255, 0.14);
 }
 
 .name-link:focus-visible {
@@ -155,6 +172,8 @@ body {
 
 /* ---------- alt bolum (bos alan) ---------- */
 
+/* saydam kalsin: sabit canvas (prizma + isik) alt bolumun uzerinden de
+   gorunmeye devam ediyor, boylece kaydirirken ortada kesin bir cizgi olusmuyor */
 .below-fold {
     position: relative;
     z-index: 1;
@@ -162,7 +181,6 @@ body {
     height: 100svh;
     background: transparent;
 }
-
 /* ---------- animasyonlar ---------- */
 
 @keyframes rise {
@@ -174,7 +192,6 @@ body {
 
 @media (max-width: 900px) {
     .stage {
-        align-items: center;
         justify-content: center;
         padding: 92px 22px 24px;
     }
@@ -195,7 +212,11 @@ body {
     }
 
     #prism-canvas {
-        opacity: var(--scene-fade);
+        opacity: calc(var(--scene-fade) * 0.42);
+    }
+
+    #beam-canvas {
+        opacity: calc(var(--scene-fade) * 0.6);
     }
 }
 
