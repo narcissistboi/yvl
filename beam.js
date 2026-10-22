@@ -181,15 +181,55 @@
 
     /* ---------- 2d cam (ekran kartı olmayan cihazlar icin) ---------- */
 
-    function drawGlass2D(T, L, R) {
+    function drawGlass2D(T, L, R, back) {
         ctx.save();
-        ctx.globalCompositeOperation = "source-over";
 
-        // govde
-        const body = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
-        body.addColorStop(0, "rgba(150,185,255,0.17)");
-        body.addColorStop(0.45, "rgba(255,255,255,0.05)");
-        body.addColorStop(1, "rgba(110,140,255,0.11)");
+        // 1. 3D arka/yan derinlik facet (ekstruzyon hissi)
+        if (back) {
+            ctx.globalCompositeOperation = "source-over";
+
+            // Sag yan yuz
+            const sideGrad = ctx.createLinearGradient(T.x, T.y, back.R.x, back.R.y);
+            sideGrad.addColorStop(0, "rgba(80, 130, 240, 0.08)");
+            sideGrad.addColorStop(1, "rgba(20, 35, 70, 0.02)");
+            ctx.fillStyle = sideGrad;
+            ctx.beginPath();
+            ctx.moveTo(T.x, T.y);
+            ctx.lineTo(back.T.x, back.T.y);
+            ctx.lineTo(back.R.x, back.R.y);
+            ctx.lineTo(R.x, R.y);
+            ctx.closePath();
+            ctx.fill();
+
+            // Alt yuz
+            const botGrad = ctx.createLinearGradient(L.x, L.y, back.R.x, back.R.y);
+            botGrad.addColorStop(0, "rgba(20, 35, 70, 0.03)");
+            botGrad.addColorStop(1, "rgba(60, 100, 200, 0.07)");
+            ctx.fillStyle = botGrad;
+            ctx.beginPath();
+            ctx.moveTo(L.x, L.y);
+            ctx.lineTo(R.x, R.y);
+            ctx.lineTo(back.R.x, back.R.y);
+            ctx.lineTo(back.L.x, back.L.y);
+            ctx.closePath();
+            ctx.fill();
+
+            // Arka kenar hatlari
+            ctx.strokeStyle = "rgba(200, 225, 255, 0.25)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(back.T.x, back.T.y);
+            ctx.lineTo(back.R.x, back.R.y);
+            ctx.lineTo(back.L.x, back.L.y);
+            ctx.stroke();
+        }
+
+        // 2. On cam yuzeyi (saydam kristal cam)
+        ctx.globalCompositeOperation = "source-over";
+        const body = ctx.createLinearGradient(T.x, T.y, L.x, L.y);
+        body.addColorStop(0, "rgba(200, 225, 255, 0.06)");
+        body.addColorStop(0.5, "rgba(255, 255, 255, 0.015)");
+        body.addColorStop(1, "rgba(140, 180, 255, 0.04)");
 
         ctx.fillStyle = body;
         ctx.beginPath();
@@ -199,32 +239,34 @@
         ctx.closePath();
         ctx.fill();
 
-        if (!lite) {
-            // ic gecis
-            const inner = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
-            inner.addColorStop(0, "rgba(255,255,255,0.12)");
-            inner.addColorStop(1, "rgba(255,255,255,0)");
-            ctx.strokeStyle = inner;
-            ctx.lineWidth = 2.4;
-            ctx.beginPath();
-            ctx.moveTo(L.x, L.y);
-            ctx.lineTo(T.x, T.y);
-            ctx.stroke();
-        }
+        // 3. Iridisan / fresnel yansimasi
+        ctx.globalCompositeOperation = "lighter";
+        const fresnel = ctx.createLinearGradient(L.x, L.y, R.x, R.y);
+        fresnel.addColorStop(0, "rgba(100, 170, 255, 0.08)");
+        fresnel.addColorStop(0.35, "rgba(255, 100, 180, 0.03)");
+        fresnel.addColorStop(0.7, "rgba(80, 240, 220, 0.04)");
+        fresnel.addColorStop(1, "rgba(180, 210, 255, 0.1)");
+        ctx.fillStyle = fresnel;
+        ctx.beginPath();
+        ctx.moveTo(T.x, T.y);
+        ctx.lineTo(L.x, L.y);
+        ctx.lineTo(R.x, R.y);
+        ctx.closePath();
+        ctx.fill();
 
-        // kenarlar
+        // 4. Kristal cam kenarlari
         const edge = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
-        edge.addColorStop(0, "rgba(255,255,255,0.75)");
-        edge.addColorStop(0.5, "rgba(190,215,255,0.45)");
-        edge.addColorStop(1, "rgba(255,255,255,0.6)");
+        edge.addColorStop(0, "rgba(255, 255, 255, 0.85)");
+        edge.addColorStop(0.5, "rgba(190, 220, 255, 0.4)");
+        edge.addColorStop(1, "rgba(255, 255, 255, 0.7)");
         ctx.strokeStyle = edge;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.2;
         ctx.stroke();
 
-        // tepe kenarinda parlama
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        // 5. Tepe ucta parlama
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
         ctx.beginPath();
-        ctx.arc(T.x, T.y, 2.2, 0, Math.PI * 2);
+        ctx.arc(T.x, T.y, 2, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
@@ -379,7 +421,7 @@
 
         // ekran karti yoksa cam 2d olarak cizilir
         if (window.__sceneMode === "2d") {
-            drawGlass2D(T, L, R);
+            drawGlass2D(T, L, R, frame.back);
         }
 
         ctx.globalCompositeOperation = "lighter";
@@ -646,25 +688,34 @@
         pointer.targetY = 0.5 + Math.sin(phase) * 0.34;
     }
 
-    // 2d modda (ekran karti yoksa) prizmanin ekran koordinatlari
+    // 2d modda prizmanin ekran koordinatlari (3D sahnenin birebir perspektifi)
     function fallbackGeometry() {
         const w = window.innerWidth;
         const h = window.innerHeight;
         const compact = w < 900;
         const centerX = (compact ? 0.88 : 0.66) * w;
-        const centerY = h * (compact ? 0.5 : 0.5);
+        const centerY = h * 0.5;
         const prismH = Math.min(h * 0.62, 520);
-        const prismW = prismH * 0.52;
+        const prismW = prismH * 0.54;
+
+        const tiltX = prismW * 0.08;
+        const depthX = prismW * 0.18;
+        const depthY = -prismH * 0.05;
+
+        const T = { x: centerX + tiltX, y: centerY - prismH * 0.5 };
+        const L = { x: centerX - prismW * 0.5, y: centerY + prismH * 0.48 };
+        const R = { x: centerX + prismW * 0.44, y: centerY + prismH * 0.44 };
+
+        const T_back = { x: T.x + depthX, y: T.y + depthY };
+        const R_back = { x: R.x + depthX, y: R.y + depthY };
+        const L_back = { x: L.x + depthX * 0.4, y: L.y + depthY * 1.2 };
 
         return {
             width: w,
             height: h,
             time: 0,
-            corners: [
-                { x: centerX, y: centerY - prismH * 0.5 },
-                { x: centerX - prismW * 0.5, y: centerY + prismH * 0.5 },
-                { x: centerX + prismW * 0.5, y: centerY + prismH * 0.5 }
-            ]
+            corners: [T, L, R],
+            back: { T: T_back, R: R_back, L: L_back }
         };
     }
 

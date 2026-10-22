@@ -61,8 +61,10 @@ function detectDeviceTier() {
         );
 
         // donanim hizlandirma kapaliyken chrome swiftshader kullanir
+        // 3D'yi kapatmak yerine hafif 3D (tier 0) modunda calistir
         if (/swiftshader|llvmpipe|softwarerasterizer|software|basic render|mesa offscreen|angle \(software/i.test(renderer)) {
-            return -1;
+            weakGpu = true;
+            return 0;
         }
 
         // zayif entegre GPU tespiti (Intel UHD/HD, eski Radeon, vb.)
@@ -78,7 +80,7 @@ function detectDeviceTier() {
     const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
 
     if (mobile || cores <= 4 || memory < 4) return weakGpu ? 0 : 1;
-    if (weakGpu) return 1;
+    if (weakGpu) return 0;
     return 2;
 }
 
