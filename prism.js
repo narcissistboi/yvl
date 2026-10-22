@@ -77,9 +77,8 @@ function detectDeviceTier() {
     const memory = navigator.deviceMemory || 4;
     const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
 
-    if (mobile || cores <= 4 || memory <= 4) return weakGpu ? 0 : 1;
+    if (mobile || cores <= 4 || memory < 4) return weakGpu ? 0 : 1;
     if (weakGpu) return 1;
-    if (cores <= 8 && memory <= 8) return 1;
     return 2;
 }
 
@@ -127,13 +126,13 @@ function initPrism(canvas, still, tier) {
         powerPreference: "high-performance"
     });
 
-    renderer.setPixelRatio(Math.min(deviceRatio, 1));
+    renderer.setPixelRatio(Math.min(deviceRatio, 1.25));
     renderer.setClearColor(0x000000, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    // transmission hedefi kucuk tutulur (her karede sahne yeniden isleniyor)
-    renderer.transmissionResolutionScale = 0.3;
+    // transmission hedefi dengeli tutulur
+    renderer.transmissionResolutionScale = 0.5;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
@@ -500,17 +499,19 @@ function initPrism(canvas, still, tier) {
 
     /* ---------- uyarlanabilir kalite ---------- */
 
-    // 2 = guclu cihaz (transmission + iridescence), 1 = orta, 0 = zayif
+    // Her seviyede transmission: 1 ve opacity: 1 korunur (cam asla buğulanmaz)
+    // Kalite tasarrufu çözünürlük ölçeği ve iridescence ile sağlanır
     const qualityPresets = {
-        2: { pixelRatio: () => Math.min(deviceRatio, 1), transmission: 1, scale: 0.3, iridescence: 1, opacity: 1 },
-        1: { pixelRatio: () => Math.min(deviceRatio, 0.85), transmission: 0, scale: 0.2, iridescence: 0.3, opacity: 0.5 },
-        0: { pixelRatio: () => 0.65, transmission: 0, scale: 0.15, iridescence: 0, opacity: 0.55 }
+        2: { pixelRatio: () => Math.min(deviceRatio, 1.25), transmission: 1, scale: 0.5, iridescence: 1, opacity: 1 },
+        1: { pixelRatio: () => Math.min(deviceRatio, 1), transmission: 1, scale: 0.35, iridescence: 0.5, opacity: 1 },
+        0: { pixelRatio: () => 0.75, transmission: 1, scale: 0.25, iridescence: 0.2, opacity: 1 }
     };
 
     const quality = {
         level: 2,
         samples: 0,
-        slow: 0
+        slow: 0,
+        warmup: 0
     };
 
     function applyQuality(level) {
@@ -521,8 +522,8 @@ function initPrism(canvas, still, tier) {
         const preset = qualityPresets[level];
         renderer.setPixelRatio(preset.pixelRatio());
         renderer.transmissionResolutionScale = preset.scale;
-        glass.transmission = preset.transmission;
-        glass.opacity = preset.opacity;
+        glass.transmission = 1;
+        glass.opacity = 1;
         glass.iridescence = preset.iridescence;
         glass.needsUpdate = true;
 
@@ -531,23 +532,16 @@ function initPrism(canvas, still, tier) {
     }
 
     function monitorPerformance(delta) {
-        quality.samples++;
-        if (delta > 22) quality.slow++;
-
-        // ilk kareler cok yavassa hemen kaliteyi dusur
-        if (quality.samples === 4 && quality.slow >= 3) {
-            if (quality.level > 0) {
-                applyQuality(quality.level - 1);
-                quality.samples = 0;
-                quality.slow = 0;
-                return;
-            }
-            switchTo2D();
+        // Ilk 25 kareyi (shader derleme ve baslangic yuklemesi) olcume dahil etme
+        if (quality.warmup < 25) {
+            quality.warmup++;
             return;
         }
 
-        // 10 kare sonra degerlendirme yap (daha hizli tepki)
-        if (quality.samples < 10) return;
+        quality.samples++;
+        if (delta > 32) quality.slow++; // 32ms = 30fps altina dusus
+
+        if (quality.samples < 25) return;
 
         const slowRatio = quality.slow / quality.samples;
         quality.samples = 0;
@@ -555,11 +549,11 @@ function initPrism(canvas, still, tier) {
 
         window.__prismQuality = quality.level;
 
-        // karelerin %35'i+ yavassa kaliteyi dusur
-        if (slowRatio > 0.35 && quality.level > 0) {
+        // Karelerin yarisindan fazlasi 30fps altina duserse kaliteyi kademeli dusur
+        if (slowRatio > 0.5 && quality.level > 0) {
             applyQuality(quality.level - 1);
-        } else if (slowRatio > 0.5 && quality.level === 0) {
-            // en dusuk seviye de yetmiyor: 2d moda gec
+        } else if (slowRatio > 0.65 && quality.level === 0) {
+            // En dusuk seviye de yetmiyorsa akici 2d moda gec
             switchTo2D();
         }
     }
