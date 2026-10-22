@@ -13,19 +13,12 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23000000'/%3E%3Ctext x='50' y='73' font-family='Arial' font-size='66' font-weight='900' text-anchor='middle' fill='%23fa0202'%3Ey%3C/text%3E%3C/svg%3E">
     <link rel="preload" href="geist-serif.otf?v=2" as="font" type="font/otf" crossorigin>
 
-    <link rel="stylesheet" href="style.css?v=20">
+    <link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
 
     <!-- 3D Prizma ve Hacimsel Işık Sahnesi (vgpu.sh 1:1) -->
-    <div id="scene-container" aria-hidden="true">
-        <picture id="prism-poster">
-            <source media="(orientation: portrait)" srcset="portrait.jpg">
-            <img src="hero.png" alt="" class="prism-backdrop" decoding="async">
-        </picture>
-        <canvas id="prism-canvas" aria-hidden="true"></canvas>
-        <canvas id="beam-canvas" aria-hidden="true"></canvas>
-    </div>
+    <canvas id="prism-canvas" aria-hidden="true"></canvas>
 
     <!-- profil -->
     <div class="hero">
@@ -47,7 +40,6 @@
     <!-- asagidaki bolum: kaydirma icin bos alan (sonra doldurulacak) -->
     <section class="below-fold" aria-hidden="true"></section>
 
-    <script src="beam.js?v=20"></script>
-    <script type="module" src="prism.js?v=20"></script>
+    <script type="module" src="prism.js?v=25"></script>
 </body>
 </html>
