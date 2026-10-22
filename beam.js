@@ -19,9 +19,9 @@
     const GLASS_IOR = 1.52;
     const DISPERSION_GAIN = 2.3;
 
-    const WAVELENGTHS = [408, 436, 464, 492, 520, 548, 576, 604, 632, 664, 692];
+    const WAVELENGTHS = [412, 448, 488, 528, 568, 608, 648, 688];
     // yazilim render icin azaltilmis yelpaze (daha az cizim = daha akici)
-    const LITE_WAVELENGTHS = [412, 452, 496, 540, 584, 628, 676];
+    const LITE_WAVELENGTHS = [420, 490, 560, 630, 680];
 
     /* ---------- durum ---------- */
 
@@ -78,7 +78,7 @@
     function resize() {
         // yumusak bir isik icin 1.25x yeterli; 2x tam ekran canvas pahali
         // lite modda daha da dusuk cozunurluk (yazilim render icin kritik)
-        dpr = lite ? 0.6 : Math.min(window.devicePixelRatio || 1, 1.25);
+        dpr = lite ? 0.5 : Math.min(window.devicePixelRatio || 1, 1);
         width = window.innerWidth;
         height = window.innerHeight;
         canvas.width = Math.max(1, Math.round(width * dpr));
@@ -245,8 +245,8 @@
         };
 
         if (!lite) {
-            ctx.strokeStyle = makeStyle(alpha * 0.07);
-            ctx.lineWidth = core * 9;
+            ctx.strokeStyle = makeStyle(alpha * 0.06);
+            ctx.lineWidth = core * 5;
             ctx.beginPath();
             ctx.moveTo(x0, y0);
             ctx.lineTo(x1, y1);
@@ -389,10 +389,10 @@
             if (!lite) {
                 const spill = ctx.createLinearGradient(source.x, source.y, aim.x, aim.y);
                 spill.addColorStop(0, "rgba(255,255,255,0)");
-                spill.addColorStop(0.55, "rgba(190,205,255,0.018)");
-                spill.addColorStop(1, "rgba(210,220,255,0.045)");
+                spill.addColorStop(0.55, "rgba(190,205,255,0.014)");
+                spill.addColorStop(1, "rgba(210,220,255,0.035)");
                 ctx.strokeStyle = spill;
-                ctx.lineWidth = prismH * 0.5;
+                ctx.lineWidth = prismH * 0.35;
                 ctx.lineCap = "round";
                 ctx.beginPath();
                 ctx.moveTo(source.x, source.y);
@@ -467,7 +467,7 @@
                 g.addColorStop(1, rgba(rgb, 0));
 
                 ctx.strokeStyle = g;
-                ctx.lineWidth = 6;
+                ctx.lineWidth = 4.5;
                 ctx.lineCap = "round";
                 ctx.beginPath();
                 ctx.moveTo(exit.x, exit.y);
@@ -494,12 +494,13 @@
 
             if (lite) {
                 // yazilim render: tek leke, duz renk
-                softBlob(spotX, spotY, prismH * 0.6, [0.7, 0.76, 1], 0.09);
+                softBlob(spotX, spotY, prismH * 0.5, [0.7, 0.76, 1], 0.08);
             } else {
-                softBlob(spotX, spotY, prismH * 0.95, [0.59, 0.67, 1], 0.07);
-                softBlob(spotX, spotY, prismH * 0.4, [1, 0.94, 0.86], 0.06);
+                softBlob(spotX, spotY, prismH * 0.8, [0.59, 0.67, 1], 0.06);
+                softBlob(spotX, spotY, prismH * 0.35, [1, 0.94, 0.86], 0.05);
 
-                for (let i = 0; i < WAVELENGTHS.length; i++) {
+                // her ikinci dalga boyuna leke ciz (yarisini atla, performans icin)
+                for (let i = 0; i < WAVELENGTHS.length; i += 2) {
                     const nm = WAVELENGTHS[i];
                     const rgb = wavelengthToRgb(nm);
                     const index = refractiveIndex(nm);
