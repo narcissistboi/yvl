@@ -170,17 +170,54 @@ html.lite #beam-canvas {
     color: rgba(250, 2, 2, 0.5);
 }
 
-/* ---------- alt bolum (bos alan) ---------- */
+/* ---------- alt bolum (discord link) ---------- */
 
-/* saydam kalsin: sabit canvas (prizma + isik) alt bolumun uzerinden de
-   gorunmeye devam ediyor, boylece kaydirirken ortada kesin bir cizgi olusmuyor */
 .below-fold {
     position: relative;
-    z-index: 1;
+    z-index: 3;
     flex: 0 0 auto;
-    height: 100svh;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
     background: transparent;
 }
+
+.server-link {
+    display: inline-block;
+    font-family: var(--font);
+    font-size: clamp(9px, 1.15vw, 13px);
+    font-weight: 400;
+    letter-spacing: clamp(0.14em, 1.8vw, 0.24em);
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.42);
+    text-decoration: none;
+    text-align: center;
+    line-height: 1.8;
+    padding: 14px 20px;
+    transition: color 0.3s ease, text-shadow 0.3s ease, opacity 0.3s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.server-link:hover {
+    color: #ffffff;
+    opacity: 1;
+    text-shadow: 0 0 28px rgba(255, 255, 255, 0.32);
+}
+
+.server-link:focus-visible {
+    outline: 1px solid rgba(255, 255, 255, 0.42);
+    outline-offset: 8px;
+}
+
+.server-link .dot {
+    color: var(--red);
+    opacity: 0.75;
+    margin: 0 0.4em;
+}
+
 /* ---------- animasyonlar ---------- */
 
 @keyframes rise {
@@ -216,7 +253,7 @@ html.lite #beam-canvas {
     }
 
     #beam-canvas {
-        opacity: calc(var(--scene-fade) * 0.6);
+        opacity: var(--scene-fade);
     }
 }
 
