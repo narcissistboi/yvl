@@ -182,14 +182,14 @@
     /* ---------- 2d ortam toz parçacıkları (motion graphic atmosphere) ---------- */
 
     const dustParticles = [];
-    for (let i = 0; i < 28; i++) {
+    for (let i = 0; i < 22; i++) {
         dustParticles.push({
             x: Math.random(),
             y: Math.random(),
-            size: 0.8 + Math.random() * 1.6,
-            speedX: (Math.random() - 0.5) * 0.0003,
-            speedY: -0.00015 - Math.random() * 0.0003,
-            alpha: 0.2 + Math.random() * 0.5,
+            size: 0.6 + Math.random() * 1.0,
+            speedX: (Math.random() - 0.5) * 0.0002,
+            speedY: -0.0001 - Math.random() * 0.0002,
+            alpha: 0.15 + Math.random() * 0.35,
             phase: Math.random() * Math.PI * 2
         });
     }
@@ -211,7 +211,7 @@
             const flicker = Math.sin(t * 2 + p.phase) * 0.35 + 0.65;
             const a = p.alpha * flicker;
 
-            ctx.fillStyle = `rgba(210, 235, 255, ${a * 0.5})`;
+            ctx.fillStyle = `rgba(210, 235, 255, ${a * 0.35})`;
             ctx.beginPath();
             ctx.arc(px, py, p.size, 0, Math.PI * 2);
             ctx.fill();
@@ -219,40 +219,17 @@
         ctx.restore();
     }
 
-    /* ---------- 2d kristal cam (motion graphic modu) ---------- */
+    /* ---------- 2d kristal cam (tam siyah / lüks minimalist prizma) ---------- */
 
     function drawGlass2D(T, L, R, back, time) {
         ctx.save();
-        const t = (time || 0) * 0.001;
 
-        const prismW = Math.max(40, Math.hypot(R.x - L.x, R.y - L.y));
-        const prismTop = Math.min(T.y, L.y, R.y);
-        const prismBottom = Math.max(T.y, L.y, R.y);
-        const prismH = Math.max(40, prismBottom - prismTop);
-        const prismCx = (L.x + R.x + T.x) / 3;
-        const prismCy = (prismTop + prismBottom) / 2;
-
-        // 1. Atmosfer arka plan aydınlatması (Soft Studio Ambience)
-        ctx.globalCompositeOperation = "lighter";
-        const atmos = ctx.createRadialGradient(prismCx, prismCy, 0, prismCx, prismCy, prismH * 0.95);
-        atmos.addColorStop(0, "rgba(45, 75, 150, 0.18)");
-        atmos.addColorStop(0.45, "rgba(22, 38, 90, 0.08)");
-        atmos.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.fillStyle = atmos;
-        ctx.beginPath();
-        ctx.arc(prismCx, prismCy, prismH * 0.95, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 2. 3D Arka / Yan Derinlik Yüzeyi (Extruded Side Facet)
+        // 1. 3D Kalınlık / Yan Facet (Zarif 3D ekstrüzyon)
         if (back) {
             ctx.globalCompositeOperation = "source-over";
 
-            // Sag yan yuz (derin cam tonu)
-            const sideGrad = ctx.createLinearGradient(T.x, T.y, back.R.x, back.R.y);
-            sideGrad.addColorStop(0, "rgba(40, 65, 120, 0.52)");
-            sideGrad.addColorStop(0.5, "rgba(20, 35, 70, 0.4)");
-            sideGrad.addColorStop(1, "rgba(10, 18, 42, 0.65)");
-            ctx.fillStyle = sideGrad;
+            // Sag yan yuzey (koyu kristal cam)
+            ctx.fillStyle = "rgba(10, 16, 28, 0.75)";
             ctx.beginPath();
             ctx.moveTo(T.x, T.y);
             ctx.lineTo(back.T.x, back.T.y);
@@ -261,11 +238,8 @@
             ctx.closePath();
             ctx.fill();
 
-            // Alt taban yuzu
-            const botGrad = ctx.createLinearGradient(L.x, L.y, back.R.x, back.R.y);
-            botGrad.addColorStop(0, "rgba(15, 25, 52, 0.6)");
-            botGrad.addColorStop(1, "rgba(30, 50, 90, 0.45)");
-            ctx.fillStyle = botGrad;
+            // Alt taban yuzey
+            ctx.fillStyle = "rgba(8, 12, 22, 0.65)";
             ctx.beginPath();
             ctx.moveTo(L.x, L.y);
             ctx.lineTo(R.x, R.y);
@@ -274,23 +248,30 @@
             ctx.closePath();
             ctx.fill();
 
-            // Arka yan kenar ince yansimasi
-            ctx.strokeStyle = "rgba(180, 215, 255, 0.35)";
-            ctx.lineWidth = 1.2;
+            // Arka derinlik kenar cizgisi (ince estetik tel)
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(back.T.x, back.T.y);
             ctx.lineTo(back.R.x, back.R.y);
             ctx.lineTo(back.L.x, back.L.y);
             ctx.stroke();
+
+            // Baglanti kenarlari
+            ctx.beginPath();
+            ctx.moveTo(T.x, T.y);
+            ctx.lineTo(back.T.x, back.T.y);
+            ctx.moveTo(R.x, R.y);
+            ctx.lineTo(back.R.x, back.R.y);
+            ctx.stroke();
         }
 
-        // 3. On Cam Govdesi (Zengin kristal cam derinligi ve kirilmasi)
+        // 2. On Cam Govdesi (Koyu, berrak kristal cam)
         ctx.globalCompositeOperation = "source-over";
         const body = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
-        body.addColorStop(0, "rgba(150, 190, 255, 0.3)");
-        body.addColorStop(0.35, "rgba(40, 60, 110, 0.18)");
-        body.addColorStop(0.7, "rgba(22, 38, 75, 0.22)");
-        body.addColorStop(1, "rgba(75, 120, 205, 0.28)");
+        body.addColorStop(0, "rgba(22, 35, 60, 0.5)");
+        body.addColorStop(0.5, "rgba(10, 16, 28, 0.4)");
+        body.addColorStop(1, "rgba(16, 26, 48, 0.55)");
 
         ctx.fillStyle = body;
         ctx.beginPath();
@@ -300,13 +281,13 @@
         ctx.closePath();
         ctx.fill();
 
-        // 4. Iridisan Spektral Parilti (Canli renkli cam pariltisi)
+        // 3. Zarif İridisan / Spektral Cam Parıltısı
         ctx.globalCompositeOperation = "lighter";
         const irid = ctx.createLinearGradient(L.x, L.y, R.x, T.y);
-        irid.addColorStop(0, "rgba(255, 60, 120, 0.2)");    // Pembe studio rim
-        irid.addColorStop(0.35, "rgba(100, 180, 255, 0.15)"); // Mavi gecis
-        irid.addColorStop(0.7, "rgba(60, 255, 210, 0.1)");   // Turkuaz
-        irid.addColorStop(1, "rgba(200, 230, 255, 0.25)");   // Beyaz tepe
+        irid.addColorStop(0, "rgba(255, 60, 110, 0.09)");   // Hafif pembe rim
+        irid.addColorStop(0.4, "rgba(100, 160, 255, 0.08)"); // Cam mavisi
+        irid.addColorStop(0.7, "rgba(60, 240, 200, 0.05)");  // Turkuaz
+        irid.addColorStop(1, "rgba(200, 220, 255, 0.14)");   // Beyaz
         ctx.fillStyle = irid;
         ctx.beginPath();
         ctx.moveTo(T.x, T.y);
@@ -315,62 +296,55 @@
         ctx.closePath();
         ctx.fill();
 
-        // 5. Cam Ici Yansima Caustic Cizgisi (Total Internal Reflection)
-        const innerRefl = ctx.createLinearGradient(L.x, L.y + prismH * 0.1, T.x, T.y);
-        innerRefl.addColorStop(0, "rgba(255, 255, 255, 0.3)");
-        innerRefl.addColorStop(0.4, "rgba(180, 220, 255, 0.1)");
+        // 4. İnce Çapraz İç Yansıma Çizgisi
+        const innerRefl = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
+        innerRefl.addColorStop(0, "rgba(255, 255, 255, 0.18)");
+        innerRefl.addColorStop(0.5, "rgba(180, 210, 255, 0.05)");
         innerRefl.addColorStop(1, "rgba(255, 255, 255, 0)");
         ctx.strokeStyle = innerRefl;
-        ctx.lineWidth = 2.4;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
-        ctx.moveTo(L.x + prismW * 0.1, L.y - prismH * 0.05);
+        ctx.moveTo(L.x + 20, L.y - 10);
         ctx.lineTo(T.x, T.y);
         ctx.stroke();
 
-        // 6. Sol Kenar Stüdyo Rim Işığı (Pink Point Light)
+        // 5. Keskin Kristal Kenarlar
+        // Sol kenar (Pembe stüdyo ışığı)
         const leftRim = ctx.createLinearGradient(L.x, L.y, T.x, T.y);
-        leftRim.addColorStop(0, "rgba(255, 59, 100, 0.9)");
-        leftRim.addColorStop(0.6, "rgba(255, 120, 160, 0.55)");
-        leftRim.addColorStop(1, "rgba(255, 255, 255, 0.95)");
+        leftRim.addColorStop(0, "rgba(255, 59, 100, 0.7)");
+        leftRim.addColorStop(0.7, "rgba(255, 140, 180, 0.45)");
+        leftRim.addColorStop(1, "rgba(255, 255, 255, 0.85)");
         ctx.strokeStyle = leftRim;
-        ctx.lineWidth = 2.4;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(L.x, L.y);
         ctx.lineTo(T.x, T.y);
         ctx.stroke();
 
-        // 7. Sag Kenar Kristal Kenar Isigi (Cyan/White Key Light)
+        // Sağ kenar (Mavi/beyaz ana ışık)
         const rightRim = ctx.createLinearGradient(T.x, T.y, R.x, R.y);
-        rightRim.addColorStop(0, "rgba(255, 255, 255, 1)");
-        rightRim.addColorStop(0.45, "rgba(140, 210, 255, 0.7)");
-        rightRim.addColorStop(1, "rgba(79, 125, 255, 0.8)");
+        rightRim.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+        rightRim.addColorStop(0.5, "rgba(150, 200, 255, 0.6)");
+        rightRim.addColorStop(1, "rgba(79, 125, 255, 0.7)");
         ctx.strokeStyle = rightRim;
-        ctx.lineWidth = 2.2;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(T.x, T.y);
         ctx.lineTo(R.x, R.y);
         ctx.stroke();
 
-        // 8. Alt Taban Kenari
-        const botRim = ctx.createLinearGradient(L.x, L.y, R.x, R.y);
-        botRim.addColorStop(0, "rgba(255, 100, 140, 0.65)");
-        botRim.addColorStop(0.5, "rgba(200, 230, 255, 0.45)");
-        botRim.addColorStop(1, "rgba(79, 125, 255, 0.65)");
-        ctx.strokeStyle = botRim;
-        ctx.lineWidth = 1.5;
+        // Alt kenar
+        ctx.strokeStyle = "rgba(180, 210, 255, 0.4)";
+        ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.moveTo(L.x, L.y);
         ctx.lineTo(R.x, R.y);
         ctx.stroke();
 
-        // 9. Tepe Apex Kristal Parlamasi
-        const apexFlare = ctx.createRadialGradient(T.x, T.y, 0, T.x, T.y, 10);
-        apexFlare.addColorStop(0, "rgba(255, 255, 255, 1)");
-        apexFlare.addColorStop(0.4, "rgba(200, 235, 255, 0.65)");
-        apexFlare.addColorStop(1, "rgba(255, 255, 255, 0)");
-        ctx.fillStyle = apexFlare;
+        // 6. Tepe Uç Noktası (Hot Specular Sparkle)
+        ctx.fillStyle = "#fff";
         ctx.beginPath();
-        ctx.arc(T.x, T.y, 10, 0, Math.PI * 2);
+        ctx.arc(T.x, T.y, 2.2, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
@@ -469,11 +443,11 @@
         const aimT = 0.22 + 0.56 * relX;
         const aim = { x: mix(L.x, T.x, aimT), y: mix(L.y, T.y, aimT) };
 
-        // kaynak dikeyde sınırlı: giris acisi cok dik olmasin
+        // kaynak dikeyde sınırlı: giris acisi cok dik olmasin (yaziya asla dokunmaz)
         const sourceTargetY = mix(prismBottom + prismH * 0.1, prismTop - prismH * 0.1, 1 - relY);
         const source = {
-            x: Math.max(0, L.x - width * 0.38),
-            y: clamp(sourceTargetY, aim.y - prismH * 0.22, aim.y + prismH * 0.22)
+            x: L.x - prismW * 0.52,
+            y: clamp(sourceTargetY, aim.y - prismH * 0.2, aim.y + prismH * 0.2)
         };
 
         const d0x = aim.x - source.x;
@@ -532,13 +506,13 @@
         ctx.globalCompositeOperation = "lighter";
 
         if (toggles.beam) {
-            // duvardaki geniş ışık sızıntısı
+            // duvardaki hafif ışık sızıntısı
             const spill = ctx.createLinearGradient(source.x, source.y, aim.x, aim.y);
             spill.addColorStop(0, "rgba(255,255,255,0)");
-            spill.addColorStop(0.55, "rgba(190,205,255,0.016)");
-            spill.addColorStop(1, "rgba(210,220,255,0.04)");
+            spill.addColorStop(0.55, "rgba(190,205,255,0.012)");
+            spill.addColorStop(1, "rgba(210,220,255,0.03)");
             ctx.strokeStyle = spill;
-            ctx.lineWidth = prismH * 0.4;
+            ctx.lineWidth = prismH * 0.22;
             ctx.lineCap = "round";
             ctx.beginPath();
             ctx.moveTo(source.x, source.y);
@@ -546,10 +520,10 @@
             ctx.stroke();
 
             // gelen beyaz ışın
-            glowLine(source.x, source.y, aim.x, aim.y, [1, 1, 1], 0.9, 1.8, true, true);
+            glowLine(source.x, source.y, aim.x, aim.y, [1, 1, 1], 0.9, 1.6, true, true);
 
             // cam içindeki yol (parlak kirilma huzmesi)
-            glowLine(aim.x, aim.y, exit.x, exit.y, [1, 1, 1], 0.98, 2.4, true);
+            glowLine(aim.x, aim.y, exit.x, exit.y, [1, 1, 1], 0.98, 2.2, true);
 
             // çıkış yelpazesi: önce saydam bir spektrum tabakası
             const wavelengths = WAVELENGTHS;
@@ -572,9 +546,9 @@
             };
 
             const sheet = ctx.createLinearGradient(sheetStart.x, sheetStart.y, sheetEndLow.x, sheetEndLow.y);
-            sheet.addColorStop(0, "rgba(255,255,255,0.28)");
-            sheet.addColorStop(0.35, "rgba(190,215,255,0.14)");
-            sheet.addColorStop(0.7, "rgba(140,180,255,0.06)");
+            sheet.addColorStop(0, "rgba(255,255,255,0.25)");
+            sheet.addColorStop(0.35, "rgba(190,215,255,0.12)");
+            sheet.addColorStop(0.7, "rgba(140,180,255,0.05)");
             sheet.addColorStop(1, "rgba(255,255,255,0)");
 
             ctx.fillStyle = sheet;
@@ -616,36 +590,17 @@
                 ctx.stroke();
             }
 
-            // giriş ve çıkış parlamaları (hot specular flares)
-            softBlob(aim.x, aim.y, prismH * 0.12, [1, 1, 1], 0.6);
-            softBlob(exit.x, exit.y, prismH * 0.14, [1, 1, 1], 0.7);
-            softBlob(aim.x, aim.y, prismH * 0.04, [1, 1, 1], 0.95);
-            softBlob(exit.x, exit.y, prismH * 0.05, [1, 1, 1], 1.0);
+            // giriş ve çıkış parlamaları (zarif, keskin kristal lens yıldızları)
+            softBlob(aim.x, aim.y, 10, [1, 1, 1], 0.7);
+            softBlob(exit.x, exit.y, 12, [1, 1, 1], 0.8);
+            softBlob(aim.x, aim.y, 2.5, [1, 1, 1], 1.0);
+            softBlob(exit.x, exit.y, 3.0, [1, 1, 1], 1.0);
         }
 
         if (toggles.caustic) {
-            // çıkış huzmesinin düştüğü duvar lekesi
             const spotX = exit.x + Math.cos(baseAngle) * fanLength * 0.72;
             const spotY = exit.y + Math.sin(baseAngle) * fanLength * 0.72;
-
-            if (lite) {
-                // yazilim render: tek leke, duz renk
-                softBlob(spotX, spotY, prismH * 0.5, [0.7, 0.76, 1], 0.08);
-            } else {
-                softBlob(spotX, spotY, prismH * 0.8, [0.59, 0.67, 1], 0.06);
-                softBlob(spotX, spotY, prismH * 0.35, [1, 0.94, 0.86], 0.05);
-
-                // her ikinci dalga boyuna leke ciz (yarisini atla, performans icin)
-                for (let i = 0; i < WAVELENGTHS.length; i += 2) {
-                    const nm = WAVELENGTHS[i];
-                    const rgb = wavelengthToRgb(nm);
-                    const index = refractiveIndex(nm);
-                    const angle = baseAngle + ((index - nAvg) / nAvg) * DISPERSION_GAIN;
-                    const sx = exit.x + Math.cos(angle) * fanLength * 0.66;
-                    const sy = exit.y + Math.sin(angle) * fanLength * 0.66;
-                    softBlob(sx, sy, prismH * 0.34, rgb, 0.07);
-                }
-            }
+            softBlob(spotX, spotY, 26, [0.7, 0.8, 1], 0.07);
         }
 
         /* ---------- hover yansıması ---------- */
@@ -661,7 +616,7 @@
             const d3 = sign(px, py, R.x, R.y, L.x, L.y);
             const inside = (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
 
-            // en yakin nokta: imlec camin icindeyse imlecin kendisi
+            // en yakin nokta
             let best = { x: px, y: py };
             let bestDist = 0;
 
@@ -688,25 +643,15 @@
             const strength = near * pointer.fade;
 
             if (strength > 0.01) {
-                // parlama imlecin tam altinda durur
-                const gx = inside ? px : mix(best.x, prismCx, 0.3);
-                const gy = inside ? py : mix(best.y, prismCy, 0.3);
-
-                if (lite) {
-                    // yazilim render: tek kucuk leke
-                    softBlob(gx, gy, prismH * 0.34, [0.9, 0.93, 1], 0.4 * strength);
-                } else {
-                    softBlob(gx, gy, prismH * 0.75, [0.84, 0.89, 1], 0.34 * strength);
-                    softBlob(gx, gy, prismH * 0.2, [1, 1, 1], 0.42 * strength);
-                }
-
-                // kenarda kısa parlama
-                ctx.strokeStyle = `rgba(255,255,255,${0.4 * strength})`;
+                // Kenarda zarif parlama
+                ctx.strokeStyle = `rgba(255,255,255,${0.45 * strength})`;
                 ctx.lineWidth = 1.6;
                 ctx.beginPath();
                 ctx.moveTo(best.x, best.y);
-                ctx.lineTo(mix(best.x, prismCx, 0.14), mix(best.y, prismCy, 0.14));
+                ctx.lineTo(mix(best.x, prismCx, 0.12), mix(best.y, prismCy, 0.12));
                 ctx.stroke();
+
+                softBlob(best.x, best.y, 8, [1, 1, 1], 0.35 * strength);
             }
         }
 
@@ -794,16 +739,18 @@
 
         const t = (time || 0) * 0.001;
         // Yumusak canli dalgalanma (motion graphic levitation)
-        const floatY = Math.sin(t * 1.5) * (prismH * 0.02);
+        const floatY = Math.sin(t * 1.5) * (prismH * 0.015);
 
         // Fare ile hafif dinamik 3D aci
         const px = (pointer.x - 0.5) * 2;
         const py = (pointer.y - 0.5) * 2;
 
-        const tiltX = prismW * (0.08 + px * 0.035);
-        const tiltY = floatY + py * (prismH * 0.02);
-        const depthX = prismW * (0.20 + px * 0.025);
-        const depthY = -prismH * 0.06 + py * (prismH * 0.015);
+        const tiltX = prismW * 0.03 + px * 5;
+        const tiltY = floatY + py * 5;
+
+        // Ince, zarif 3D ekstruzyon kenari (abartili kanat degil, kristal kalinlik)
+        const depthX = 12 + px * 2.5;
+        const depthY = -4 + py * 1.5;
 
         const T = { x: centerX + tiltX, y: centerY - prismH * 0.5 + tiltY };
         const L = { x: centerX - prismW * 0.5, y: centerY + prismH * 0.48 + tiltY };
@@ -811,7 +758,7 @@
 
         const T_back = { x: T.x + depthX, y: T.y + depthY };
         const R_back = { x: R.x + depthX, y: R.y + depthY };
-        const L_back = { x: L.x + depthX * 0.35, y: L.y + depthY * 1.15 };
+        const L_back = { x: L.x + depthX * 0.5, y: L.y + depthY };
 
         return {
             width: w,
