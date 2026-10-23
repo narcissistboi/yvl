@@ -1,1 +1,0 @@
-(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,48828,e=>{"use strict";e.s(["getGPUTier",0,function(e){return Promise.resolve({tier:3,type:"BENCHMARK"})}])}]);
