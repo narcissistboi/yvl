@@ -1,0 +1,4 @@
+:HL["/yvl/_next/static/chunks/1x0xyelhz2ubu.css","style"]
+:HC["/",""]
+:HL["/yvl/iceout-wordmark.png","image"]
+0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}},"staleTime":300,"buildId":"gKne_1N93ilRX6uOyHoZr"}
